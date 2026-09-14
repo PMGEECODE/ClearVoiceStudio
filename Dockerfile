@@ -1,7 +1,7 @@
 # -----------------------------------------------------------------------------
 # Stage 1: Build Next.js Application
 # -----------------------------------------------------------------------------
-FROM node:20-bullseye-slim AS builder
+FROM node:20-bookworm-slim AS builder
 
 WORKDIR /app
 
@@ -36,7 +36,7 @@ RUN npm prune --production
 # -----------------------------------------------------------------------------
 # Stage 2: Production Runtime (Python 3.11 + Node 20)
 # -----------------------------------------------------------------------------
-FROM python:3.11-slim-bullseye AS runner
+FROM python:3.11-slim-bookworm AS runner
 
 WORKDIR /app
 
@@ -51,8 +51,14 @@ ENV NODE_ENV=production \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
+    gnupg \
     ffmpeg \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && mkdir -p /etc/apt/keyrings \
+    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+       | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" \
+       > /etc/apt/sources.list.d/nodesource.list \
+    && apt-get update \
     && apt-get install -y --no-install-recommends nodejs \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
