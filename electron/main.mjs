@@ -35,6 +35,23 @@ const PIPER_DIR = IS_PACKAGED
 
 const IS_WIN = process.platform === "win32";
 
+// Hardware acceleration & GPU compatibility:
+// Under Wine or environments without native Direct3D/DComposition support,
+// disable hardware acceleration to prevent OpenGL/DirectComposition crashes.
+const isWine = IS_WIN && (
+  Boolean(process.env.WINEPREFIX) ||
+  Boolean(process.env.WINELOADERNOEXEC) ||
+  fs.existsSync("C:\\windows\\system32\\wineboot.exe") ||
+  fs.existsSync("C:\\windows\\syswow64\\wineboot.exe")
+);
+
+if (isWine || process.env.ELECTRON_DISABLE_GPU === "1") {
+  app.disableHardwareAcceleration();
+  app.commandLine.appendSwitch("disable-gpu");
+  app.commandLine.appendSwitch("disable-d3d11");
+  app.commandLine.appendSwitch("disable-software-rasterizer");
+}
+
 function getPythonRuntime(piperDir) {
   const venvDir = path.join(piperDir, ".venv");
   const winPython = path.join(venvDir, "Scripts", "python.exe");
@@ -63,7 +80,7 @@ const REQUIREMENTS = path.join(PIPER_DIR, "requirements.txt");
 const IS_DEV = process.env.NODE_ENV === "development" || !IS_PACKAGED;
 const NEXT_PORT = process.env.NEXT_PORT ? parseInt(process.env.NEXT_PORT, 10) : 3000;
 const PIPER_PORT = process.env.PIPER_PORT ? parseInt(process.env.PIPER_PORT, 10) : 5000;
-const APP_URL = `http://localhost:${NEXT_PORT}`;
+const APP_URL = `http://127.0.0.1:${NEXT_PORT}`;
 const PIPER_URL = `http://127.0.0.1:${PIPER_PORT}`;
 
 /** Tracked child processes for cleanup */
@@ -177,7 +194,7 @@ function ensurePythonEnv() {
 
   let installed = false;
   try {
-    execSync(`"${runtime.python}" -c "import piper; import flask"`, { stdio: "ignore" });
+    execSync(`"${runtime.python}" -c "import numpy; assert int(numpy.__version__.split('.')[0]) < 2; import piper; import flask; import onnxruntime"`, { stdio: "ignore" });
     installed = true;
   } catch {
     installed = false;
@@ -189,7 +206,7 @@ function ensurePythonEnv() {
       if (fs.existsSync(REQUIREMENTS)) {
         execSync(`"${runtime.pip}" install -r "${REQUIREMENTS}"`, { stdio: "ignore" });
       } else {
-        execSync(`"${runtime.pip}" install "piper-tts[http]>=1.8.0"`, { stdio: "ignore" });
+        execSync(`"${runtime.pip}" install "numpy>=1.26.0,<2.0.0" "piper-tts[http]>=1.8.0" "onnxruntime>=1.20.0" "flask>=3.0.0"`, { stdio: "ignore" });
       }
       installed = true;
     } catch {
@@ -366,7 +383,7 @@ function createWindow() {
 
   // Open external links in default browser
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (!url.startsWith("http://localhost")) {
+    if (!url.startsWith("http://localhost") && !url.startsWith("http://127.0.0.1")) {
       shell.openExternal(url);
       return { action: "deny" };
     }
