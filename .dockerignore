@@ -1,0 +1,12 @@
+.git
+.github
+.agents
+.venv
+piper-tts/.venv
+dist-electron
+dist
+node_modules
+.next
+*.log
+*.ses
+.DS_Store

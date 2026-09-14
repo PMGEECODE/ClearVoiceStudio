@@ -1,0 +1,19 @@
+services:
+  clearvoice-studio:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: clearvoice-studio
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+    volumes:
+      # Persist dynamically downloaded voices across container restarts
+      - voice_models:/app/piper-tts
+
+volumes:
+  voice_models:

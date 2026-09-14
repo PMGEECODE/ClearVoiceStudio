@@ -7,7 +7,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
 const piperDir = path.join(rootDir, "piper-tts");
 const venvDir = path.join(piperDir, ".venv");
-const pythonBin = path.join(venvDir, "bin", "python3");
+const pythonBin = fs.existsSync(path.join(venvDir, "bin", "python3"))
+  ? path.join(venvDir, "bin", "python3")
+  : (fs.existsSync(path.join(venvDir, "Scripts", "python.exe"))
+    ? path.join(venvDir, "Scripts", "python.exe")
+    : "python3");
 
 async function isServerOnline() {
   try {
@@ -100,4 +104,7 @@ function startNext(args) {
 
 await startPiperServer();
 const extraArgs = process.argv.slice(2);
+if (process.env.PORT && !extraArgs.includes("-p") && !extraArgs.includes("--port")) {
+  extraArgs.push("-p", process.env.PORT);
+}
 startNext(extraArgs);
