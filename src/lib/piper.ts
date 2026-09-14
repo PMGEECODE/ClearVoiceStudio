@@ -41,11 +41,20 @@ export function getPiperDir(): string {
  */
 export function getPiperPython(): string {
   const dir = getPiperDir();
-  const venvPython = path.join(dir, ".venv", "bin", "python3");
-  if (fs.existsSync(venvPython)) {
-    return venvPython;
+  const isWindows = process.platform === "win32";
+  const winPython = path.join(dir, ".venv", "Scripts", "python.exe");
+  const unixPython = path.join(dir, ".venv", "bin", "python3");
+
+  if (isWindows && fs.existsSync(winPython)) {
+    return winPython;
   }
-  return "python3";
+  if (!isWindows && fs.existsSync(unixPython)) {
+    return unixPython;
+  }
+  if (fs.existsSync(winPython)) return winPython;
+  if (fs.existsSync(unixPython)) return unixPython;
+
+  return isWindows ? "python" : "python3";
 }
 
 export const PIPER_SERVER_URL = process.env.PIPER_SERVER_URL || "http://127.0.0.1:5000";

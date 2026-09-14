@@ -33,8 +33,31 @@ const PIPER_DIR = IS_PACKAGED
   ? path.join(process.resourcesPath, "piper-tts")
   : path.join(ROOT_DIR, "piper-tts");
 
-const VENV_PYTHON = path.join(PIPER_DIR, ".venv", "bin", "python3");
-const PIP_BIN = path.join(PIPER_DIR, ".venv", "bin", "pip");
+const IS_WIN = process.platform === "win32";
+
+function getPythonRuntime(piperDir) {
+  const venvDir = path.join(piperDir, ".venv");
+  const winPython = path.join(venvDir, "Scripts", "python.exe");
+  const winPip = path.join(venvDir, "Scripts", "pip.exe");
+  const unixPython = path.join(venvDir, "bin", "python3");
+  const unixPip = path.join(venvDir, "bin", "pip");
+
+  if (IS_WIN) {
+    return {
+      venvDir,
+      python: winPython,
+      pip: winPip,
+      hasVenv: fs.existsSync(winPython),
+    };
+  }
+  return {
+    venvDir,
+    python: unixPython,
+    pip: unixPip,
+    hasVenv: fs.existsSync(unixPython),
+  };
+}
+
 const REQUIREMENTS = path.join(PIPER_DIR, "requirements.txt");
 
 const IS_DEV = process.env.NODE_ENV === "development" || !IS_PACKAGED;
@@ -73,6 +96,18 @@ function log(tag, msg, level = "info") {
   const cleanMsg = sanitizeTerminalOutput(msg);
   const prefix = { info: "ℹ", warn: "⚠", error: "✖", ok: "✓" }[level] ?? "•";
   console[level === "error" ? "error" : "log"](`[${cleanTag}] ${prefix} ${cleanMsg}`);
+}
+
+function findSystemPython() {
+  const commands = IS_WIN ? ["python", "py", "python3"] : ["python3", "python"];
+  for (const cmd of commands) {
+    try {
+      const probe = IS_WIN ? `where ${cmd}` : `which ${cmd}`;
+      execSync(probe, { stdio: "ignore" });
+      return cmd;
+    } catch {}
+  }
+  return null;
 }
 
 /**
@@ -116,39 +151,54 @@ function waitForHttp(url, { retries = 40, intervalMs = 300, timeoutMs = 2000 } =
 // ──────────────────────────────────────────────────────────────────
 
 function ensurePythonEnv() {
-  if (!fs.existsSync(VENV_PYTHON)) {
+  const runtime = getPythonRuntime(PIPER_DIR);
+
+  // If a Linux venv was packaged into Windows, clean it up
+  if (IS_WIN && fs.existsSync(path.join(runtime.venvDir, "bin", "python3")) && !fs.existsSync(runtime.python)) {
+    try {
+      fs.rmSync(runtime.venvDir, { recursive: true, force: true });
+    } catch {}
+  }
+
+  if (!runtime.hasVenv) {
+    const sysPy = findSystemPython();
+    if (!sysPy) {
+      log("Setup", "Local Python 3.9+ runtime not found; standby mode active", "warn");
+      return false;
+    }
     log("Setup", "Initializing local runtime environment…");
     try {
-      execSync(`python3 -m venv "${path.join(PIPER_DIR, ".venv")}"`, { stdio: "ignore" });
-    } catch (err) {
-      log("Setup", "Failed to create runtime environment", "error");
-      throw err;
+      execSync(`"${sysPy}" -m venv "${runtime.venvDir}"`, { stdio: "ignore" });
+    } catch {
+      log("Setup", "Could not initialize virtual environment", "warn");
+      return false;
     }
   }
 
   let installed = false;
   try {
-    execSync(`"${VENV_PYTHON}" -c "import piper; import flask"`, { stdio: "ignore" });
+    execSync(`"${runtime.python}" -c "import piper; import flask"`, { stdio: "ignore" });
     installed = true;
   } catch {
     installed = false;
   }
 
-  if (!installed) {
+  if (!installed && fs.existsSync(runtime.pip)) {
     log("Setup", "Initializing voice components…");
     try {
       if (fs.existsSync(REQUIREMENTS)) {
-        execSync(`"${PIP_BIN}" install -r "${REQUIREMENTS}"`, { stdio: "ignore" });
+        execSync(`"${runtime.pip}" install -r "${REQUIREMENTS}"`, { stdio: "ignore" });
       } else {
-        execSync(`"${PIP_BIN}" install "piper-tts[http]>=1.8.0"`, { stdio: "ignore" });
+        execSync(`"${runtime.pip}" install "piper-tts[http]>=1.8.0"`, { stdio: "ignore" });
       }
-    } catch (err) {
-      log("Setup", "Failed to install required components", "error");
-      throw err;
+      installed = true;
+    } catch {
+      log("Setup", "Voice components installation deferred", "warn");
     }
   }
 
   log("Setup", "Runtime environment ready.", "ok");
+  return true;
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -162,6 +212,12 @@ async function startPiperServer() {
     return true;
   }
 
+  const runtime = getPythonRuntime(PIPER_DIR);
+  if (!fs.existsSync(runtime.python)) {
+    log("Engine", "Local engine runtime executable deferred; standby active.", "warn");
+    return false;
+  }
+
   let defaultModel = "en_US-lessac-medium.onnx";
   if (!fs.existsSync(path.join(PIPER_DIR, defaultModel))) {
     const files = fs.readdirSync(PIPER_DIR);
@@ -172,7 +228,7 @@ async function startPiperServer() {
   log("Engine", "Starting speech synthesis engine…");
 
   let proc = spawn(
-    VENV_PYTHON,
+    runtime.python,
     ["-m", "piper.http_server", "-m", defaultModel, "--data-dir", ".", "--port", String(PIPER_PORT)],
     {
       cwd: PIPER_DIR,
@@ -476,13 +532,8 @@ ipcMain.handle("updater:quit-and-install", () => {
 app.whenReady().then(async () => {
   try {
     ensurePythonEnv();
-  } catch {
-    dialog.showErrorBox(
-      "Setup Failed",
-      "Could not initialize the local speech engine runtime.\n\nPlease ensure a supported Python environment is available."
-    );
-    app.quit();
-    return;
+  } catch (err) {
+    log("Setup", `Runtime note: ${err?.message || err}`, "warn");
   }
 
   await Promise.all([startPiperServer(), startNextServer()]);

@@ -24,7 +24,7 @@ files:
   - "!node_modules/.cache/**"
   - "!**/*.map"
 
-# Extra resources: bundle Piper TTS models + runtime
+# Extra resources: bundle voice models + metadata
 extraResources:
   - from: piper-tts
     to: piper-tts
@@ -32,7 +32,6 @@ extraResources:
       - "**/*.onnx"
       - "**/*.onnx.json"
       - "**/*.txt"
-      - ".venv/**/*"
 
 # Auto-update publish provider (GitHub Releases)
 publish:
@@ -53,6 +52,14 @@ linux:
   maintainer: "LiveCodeTech <dev@livecodetech.local>"
   syncDesktopName: true
   icon: build-resources/icon.png
+  extraResources:
+    - from: piper-tts
+      to: piper-tts
+      filter:
+        - "**/*.onnx"
+        - "**/*.onnx.json"
+        - "**/*.txt"
+        - ".venv/**/*"
 
 # macOS
 mac:
