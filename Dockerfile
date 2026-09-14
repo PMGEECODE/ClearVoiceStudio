@@ -45,14 +45,17 @@ ENV NODE_ENV=production \
     PORT=3000 \
     PIPER_PORT=5000 \
     PIPER_SERVER_URL=http://127.0.0.1:5000 \
+    PIPER_DIR=/app/piper-tts \
+    PYTHON_BIN=/usr/local/bin/python3 \
     PYTHONUNBUFFERED=1
 
-# Install Node.js 20 and ffmpeg
+# Install Node.js 20, ffmpeg, and espeak-ng
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     gnupg \
     ffmpeg \
+    espeak-ng \
     && mkdir -p /etc/apt/keyrings \
     && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
        | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
@@ -90,7 +93,7 @@ RUN if [ ! -f ./piper-tts/en_US-lessac-medium.onnx ]; then \
       curl -fsSL \
         "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json" \
         -o ./piper-tts/en_US-lessac-medium.onnx.json; \
-    fi
+    fi && chmod -R 777 ./piper-tts
 
 # Expose the Next.js port
 EXPOSE 3000

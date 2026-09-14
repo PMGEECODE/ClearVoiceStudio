@@ -5,13 +5,37 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
-const piperDir = path.join(rootDir, "piper-tts");
+const piperDir = process.env.PIPER_DIR || path.join(rootDir, "piper-tts");
 const venvDir = path.join(piperDir, ".venv");
-const pythonBin = fs.existsSync(path.join(venvDir, "bin", "python3"))
-  ? path.join(venvDir, "bin", "python3")
-  : (fs.existsSync(path.join(venvDir, "Scripts", "python.exe"))
-    ? path.join(venvDir, "Scripts", "python.exe")
-    : "python3");
+
+function resolvePython() {
+  if (process.env.PYTHON_BIN && fs.existsSync(process.env.PYTHON_BIN)) {
+    return process.env.PYTHON_BIN;
+  }
+  const venvUnix = path.join(venvDir, "bin", "python3");
+  if (fs.existsSync(venvUnix)) return venvUnix;
+  const venvWin = path.join(venvDir, "Scripts", "python.exe");
+  if (fs.existsSync(venvWin)) return venvWin;
+
+  const candidatePaths = [
+    "/usr/local/bin/python3",
+    "/usr/bin/python3",
+    "/usr/local/bin/python",
+    "/usr/bin/python",
+  ];
+  for (const c of candidatePaths) {
+    if (fs.existsSync(c)) return c;
+  }
+
+  try {
+    const which = execSync("which python3 || which python", { encoding: "utf-8" }).trim();
+    if (which && fs.existsSync(which)) return which;
+  } catch {}
+
+  return "python3";
+}
+
+const pythonBin = resolvePython();
 
 async function isServerOnline() {
   try {
@@ -47,6 +71,10 @@ async function startPiperServer() {
       "piper.http_server",
       "-m",
       defaultModel,
+      "--host",
+      "127.0.0.1",
+      "--data-dir",
+      piperDir,
       "--data-dir",
       ".",
       "--port",
@@ -54,17 +82,18 @@ async function startPiperServer() {
     ],
     {
       cwd: piperDir,
-      stdio: ["ignore", "ignore", "pipe"],
+      stdio: "inherit",
     }
   );
 
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 75; i++) {
     await new Promise((r) => setTimeout(r, 200));
     if (await isServerOnline()) {
       console.log("\x1b[32m%s\x1b[0m", "✓ Voice engine ready");
       return;
     }
   }
+  console.warn("\x1b[33m%s\x1b[0m", "[Engine] Voice engine warming up in background...");
 }
 
 function startNext(args) {

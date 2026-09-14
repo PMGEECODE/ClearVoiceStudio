@@ -3,7 +3,7 @@ import { spawn } from "child_process";
 import path from "path";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "fs";
 import { tmpdir } from "os";
-import { getPiperDir, getPiperPython, PIPER_SERVER_URL } from "@/lib/piper";
+import { getPiperDir, getPiperPython, isPythonAvailable, PIPER_SERVER_URL } from "@/lib/piper";
 import {
   ProcessProsodyOptions,
   ProsodyResult,
@@ -124,7 +124,7 @@ export async function POST(req: NextRequest) {
       const piperPython = getPiperPython();
       const modelPath = resolveModelPath(piperDir, String(voice || DEFAULT_VOICE));
 
-      if (!existsSync(piperPython) || !existsSync(modelPath)) {
+      if (!isPythonAvailable(piperPython) || !existsSync(/* turbopackIgnore: true */ modelPath)) {
         return NextResponse.json(
           { error: "Voice engine or voice model file not found on server." },
           { status: 500 }
@@ -190,15 +190,12 @@ export async function POST(req: NextRequest) {
       // Piper HTTP server not available or timed out, fall back to CLI execution
     }
 
-    // 2. Fallback path: CLI execution with piper binary in virtualenv
+    // 2. Fallback path: CLI execution with piper binary
     const piperDir = getPiperDir();
     const piperPython = getPiperPython();
-    const modelPath = path.join(piperDir, `${voice}.onnx`);
-    const fallbackModelPath = existsSync(modelPath)
-      ? modelPath
-      : path.join(piperDir, "en_US-lessac-medium.onnx");
+    const fallbackModelPath = resolveModelPath(piperDir, String(voice || DEFAULT_VOICE));
 
-    if (!existsSync(piperPython) || !existsSync(fallbackModelPath)) {
+    if (!isPythonAvailable(piperPython) || !existsSync(/* turbopackIgnore: true */ fallbackModelPath)) {
       return NextResponse.json(
         { error: "Voice engine or voice model file not found on server." },
         { status: 500 }
@@ -400,7 +397,7 @@ async function synthesizeDialogue(params: {
     speakerLabels.set(turn.speakerKey, turn.speakerLabel);
 
     const modelPath = resolveModelPath(piperDir, voiceId);
-    if (!existsSync(piperPython) || !existsSync(modelPath)) {
+    if (!isPythonAvailable(piperPython) || !existsSync(modelPath)) {
       throw new Error(`Voice engine or voice model missing for ${turn.speakerLabel}.`);
     }
 
@@ -494,8 +491,24 @@ function getInstalledVoiceIds(piperDir: string): string[] {
 }
 
 function resolveModelPath(piperDir: string, voiceId: string): string {
-  const preferred = path.join(piperDir, `${voiceId}.onnx`);
-  return existsSync(preferred) ? preferred : path.join(piperDir, `${DEFAULT_VOICE}.onnx`);
+  const cleanId = voiceId.endsWith(".onnx") ? voiceId.slice(0, -5) : voiceId;
+  const preferred = path.join(piperDir, `${cleanId}.onnx`);
+  if (existsSync(preferred)) return preferred;
+
+  const defaultPath = path.join(piperDir, `${DEFAULT_VOICE}.onnx`);
+  if (existsSync(defaultPath)) return defaultPath;
+
+  try {
+    if (existsSync(piperDir)) {
+      const files = readdirSync(piperDir);
+      const anyOnnx = files.find((f) => f.endsWith(".onnx"));
+      if (anyOnnx) {
+        return path.join(piperDir, anyOnnx);
+      }
+    }
+  } catch {}
+
+  return preferred;
 }
 
 function pickVoiceForTurn(

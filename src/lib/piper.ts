@@ -1,6 +1,6 @@
 import path from "path";
 import fs from "fs";
-import { spawn, ChildProcess } from "child_process";
+import { spawn, execSync, ChildProcess } from "child_process";
 
 let piperProcess: ChildProcess | null = null;
 export function getPiperChildProcess(): ChildProcess | null {
@@ -29,7 +29,7 @@ export function getPiperDir(): string {
   if (fs.existsSync(localRepoDir)) {
     return localRepoDir;
   }
-  const homeFallback = path.join(process.env.HOME || "/home/cdncode", "piper-tts");
+  const homeFallback = path.join(process.env.HOME || "/tmp", "piper-tts");
   if (fs.existsSync(homeFallback)) {
     return homeFallback;
   }
@@ -37,9 +37,34 @@ export function getPiperDir(): string {
 }
 
 /**
- * Returns the python executable within piper-tts .venv, or fallback to python3.
+ * Validates whether a Python executable path or command name exists and is executable.
+ */
+export function isPythonAvailable(pythonPath: string): boolean {
+  if (!pythonPath) return false;
+  if (path.isAbsolute(pythonPath) || pythonPath.includes(path.sep)) {
+    return fs.existsSync(pythonPath);
+  }
+  if (fs.existsSync(pythonPath)) {
+    return true;
+  }
+  try {
+    const isWindows = process.platform === "win32";
+    const cmd = isWindows ? `where ${pythonPath}` : `which ${pythonPath}`;
+    execSync(cmd, { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Returns the python executable within piper-tts .venv, or fallback to system python.
  */
 export function getPiperPython(): string {
+  if (process.env.PYTHON_BIN && isPythonAvailable(process.env.PYTHON_BIN)) {
+    return process.env.PYTHON_BIN;
+  }
+
   const dir = getPiperDir();
   const isWindows = process.platform === "win32";
 
@@ -65,6 +90,22 @@ export function getPiperPython(): string {
   // Unix / Linux
   const unixPython = path.join(dir, ".venv", "bin", "python3");
   if (fs.existsSync(unixPython)) return unixPython;
+
+  const candidatePaths = [
+    "/usr/local/bin/python3",
+    "/usr/bin/python3",
+    "/usr/local/bin/python",
+    "/usr/bin/python",
+  ];
+  for (const candidate of candidatePaths) {
+    if (fs.existsSync(/* turbopackIgnore: true */ candidate)) return candidate;
+  }
+
+  try {
+    const which = execSync("which python3 || which python", { encoding: "utf-8" }).trim();
+    if (which && fs.existsSync(which)) return which;
+  } catch {}
+
   return "python3";
 }
 
@@ -127,13 +168,17 @@ export async function ensurePiperServer(): Promise<boolean> {
       "piper.http_server",
       "-m",
       defaultModel,
+      "--host",
+      "127.0.0.1",
+      "--data-dir",
+      piperDir,
       "--data-dir",
       ".",
       "--port",
       "5000",
     ];
 
-    const child = spawn(pythonBin, args, {
+    const child = spawn(/* turbopackIgnore: true */ pythonBin, args, {
       cwd: piperDir,
       stdio: "ignore",
       detached: true,
