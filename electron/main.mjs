@@ -284,6 +284,11 @@ async function startNextServer() {
 
   log("Studio", "Starting application service…");
 
+  // Prevent Next.js from attempting runtime SWC binary downloads.
+  // The platform-specific SWC binary is pre-bundled with the app.
+  process.env.NEXT_TELEMETRY_DISABLED = "1";
+  process.env.NEXT_PRIVATE_SKIP_SIZE_LIMIT_CHECK = "1";
+
   const nextApp = next({
     dev: false,
     dir: ROOT_DIR,
