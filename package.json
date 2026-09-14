@@ -1,0 +1,39 @@
+{
+  "name": "clearvoice-studio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Desktop studio for Neural Text-to-Speech synthesis",
+  "author": "LiveCodeTech <dev@livecodetech.local>",
+  "desktopName": "clearvoice-studio.desktop",
+  "main": "electron/main.mjs",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:next": "next dev",
+    "build": "next build",
+    "start": "node scripts/start.mjs",
+    "lint": "eslint",
+    "electron:dev": "node scripts/electron-dev.mjs",
+    "electron:build": "node scripts/electron-build.mjs",
+    "electron:build:linux": "node scripts/electron-build.mjs --linux",
+    "electron:build:win": "node scripts/electron-build.mjs --win",
+    "postinstall": "node scripts/patch-transformers.mjs"
+  },
+  "dependencies": {
+    "@xenova/transformers": "^2.17.2",
+    "electron-updater": "^6.8.9",
+    "lucide-react": "^1.43.0",
+    "next": "16.3.4",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "electron": "^44.3.0",
+    "electron-builder": "^26.15.3",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.4",
+    "typescript": "^5"
+  }
+}
