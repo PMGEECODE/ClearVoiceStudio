@@ -77,6 +77,15 @@ win:
     - target: nsis
       arch: [x64]
   icon: build-resources/icon.ico
+  extraResources:
+    - from: piper-tts
+      to: piper-tts
+      filter:
+        - "**/*.onnx"
+        - "**/*.onnx.json"
+        - "**/*.txt"
+    - from: build-resources/win-python
+      to: python-win
 
 nsis:
   oneClick: false

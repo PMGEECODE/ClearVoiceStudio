@@ -42,19 +42,30 @@ export function getPiperDir(): string {
 export function getPiperPython(): string {
   const dir = getPiperDir();
   const isWindows = process.platform === "win32";
-  const winPython = path.join(dir, ".venv", "Scripts", "python.exe");
+
+  if (isWindows) {
+    // 1. Packaged standalone Windows Python bundled with Electron
+    const resourcesPath = (process as unknown as { resourcesPath?: string }).resourcesPath;
+    if (resourcesPath) {
+      const embeddedWin = path.join(resourcesPath, "python-win", "python.exe");
+      if (fs.existsSync(embeddedWin)) return embeddedWin;
+    }
+
+    // 2. Build-resources fallback (dev mode)
+    const localEmbed = path.resolve(process.cwd(), "build-resources", "win-python", "python.exe");
+    if (fs.existsSync(localEmbed)) return localEmbed;
+
+    // 3. Venv Scripts/python.exe
+    const winPython = path.join(dir, ".venv", "Scripts", "python.exe");
+    if (fs.existsSync(winPython)) return winPython;
+
+    return "python";
+  }
+
+  // Unix / Linux
   const unixPython = path.join(dir, ".venv", "bin", "python3");
-
-  if (isWindows && fs.existsSync(winPython)) {
-    return winPython;
-  }
-  if (!isWindows && fs.existsSync(unixPython)) {
-    return unixPython;
-  }
-  if (fs.existsSync(winPython)) return winPython;
   if (fs.existsSync(unixPython)) return unixPython;
-
-  return isWindows ? "python" : "python3";
+  return "python3";
 }
 
 export const PIPER_SERVER_URL = process.env.PIPER_SERVER_URL || "http://127.0.0.1:5000";

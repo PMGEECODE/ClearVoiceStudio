@@ -53,25 +53,72 @@ if (isWine || process.env.ELECTRON_DISABLE_GPU === "1") {
 }
 
 function getPythonRuntime(piperDir) {
-  const venvDir = path.join(piperDir, ".venv");
-  const winPython = path.join(venvDir, "Scripts", "python.exe");
-  const winPip = path.join(venvDir, "Scripts", "pip.exe");
-  const unixPython = path.join(venvDir, "bin", "python3");
-  const unixPip = path.join(venvDir, "bin", "pip");
-
   if (IS_WIN) {
+    // 1. Packaged standalone Windows Python bundled with the application
+    const embeddedWin = IS_PACKAGED
+      ? path.join(process.resourcesPath, "python-win", "python.exe")
+      : path.join(ROOT_DIR, "build-resources", "win-python", "python.exe");
+
+    if (fs.existsSync(embeddedWin)) {
+      return {
+        python: embeddedWin,
+        isEmbedded: true,
+        hasRuntime: true,
+      };
+    }
+
+    // 2. Local venv fallback
+    const venvDir = path.join(piperDir, ".venv");
+    const winPython = path.join(venvDir, "Scripts", "python.exe");
+    const winPip = path.join(venvDir, "Scripts", "pip.exe");
+    if (fs.existsSync(winPython)) {
+      return {
+        venvDir,
+        python: winPython,
+        pip: winPip,
+        isEmbedded: false,
+        hasRuntime: true,
+      };
+    }
+
+    // 3. UserData writable runtime fallback
+    let userVenv = "";
+    try {
+      userVenv = path.join(app.getPath("userData"), "python-runtime");
+    } catch {
+      userVenv = path.join(process.env.APPDATA || os.tmpdir(), "ClearVoice Studio", "python-runtime");
+    }
+    const userPython = path.join(userVenv, "Scripts", "python.exe");
+    const userPip = path.join(userVenv, "Scripts", "pip.exe");
+    if (fs.existsSync(userPython)) {
+      return {
+        venvDir: userVenv,
+        python: userPython,
+        pip: userPip,
+        isEmbedded: false,
+        hasRuntime: true,
+      };
+    }
+
     return {
-      venvDir,
-      python: winPython,
-      pip: winPip,
-      hasVenv: fs.existsSync(winPython),
+      venvDir: userVenv,
+      python: userPython,
+      pip: userPip,
+      isEmbedded: false,
+      hasRuntime: false,
     };
   }
+
+  // Unix / Linux
+  const venvDir = path.join(piperDir, ".venv");
+  const unixPython = path.join(venvDir, "bin", "python3");
+  const unixPip = path.join(venvDir, "bin", "pip");
   return {
     venvDir,
     python: unixPython,
     pip: unixPip,
-    hasVenv: fs.existsSync(unixPython),
+    isEmbedded: false,
+    hasRuntime: fs.existsSync(unixPython),
   };
 }
 
@@ -170,14 +217,27 @@ function waitForHttp(url, { retries = 40, intervalMs = 300, timeoutMs = 2000 } =
 function ensurePythonEnv() {
   const runtime = getPythonRuntime(PIPER_DIR);
 
+  // If bundled standalone embedded runtime is present, verify packages are installed
+  if (runtime.isEmbedded && runtime.hasRuntime) {
+    try {
+      execSync(`"${runtime.python}" -c "import piper; import numpy; import onnxruntime; import flask"`, { stdio: "ignore" });
+      log("Setup", "Bundled neural engine runtime ready.", "ok");
+      return true;
+    } catch {
+      // Package verification failed — embedded Python is a bare runtime (dev build).
+      // Fall through to pip install below.
+      log("Setup", "Embedded runtime found but packages missing — installing now…", "warn");
+    }
+  }
+
   // If a Linux venv was packaged into Windows, clean it up
-  if (IS_WIN && fs.existsSync(path.join(runtime.venvDir, "bin", "python3")) && !fs.existsSync(runtime.python)) {
+  if (IS_WIN && runtime.venvDir && fs.existsSync(path.join(runtime.venvDir, "bin", "python3")) && !fs.existsSync(runtime.python)) {
     try {
       fs.rmSync(runtime.venvDir, { recursive: true, force: true });
     } catch {}
   }
 
-  if (!runtime.hasVenv) {
+  if (!runtime.hasRuntime) {
     const sysPy = findSystemPython();
     if (!sysPy) {
       log("Setup", "Local Python 3.9+ runtime not found; standby mode active", "warn");
@@ -185,7 +245,10 @@ function ensurePythonEnv() {
     }
     log("Setup", "Initializing local runtime environment…");
     try {
-      execSync(`"${sysPy}" -m venv "${runtime.venvDir}"`, { stdio: "ignore" });
+      if (runtime.venvDir) {
+        fs.mkdirSync(path.dirname(runtime.venvDir), { recursive: true });
+        execSync(`"${sysPy}" -m venv "${runtime.venvDir}"`, { stdio: "ignore" });
+      }
     } catch {
       log("Setup", "Could not initialize virtual environment", "warn");
       return false;
@@ -200,7 +263,7 @@ function ensurePythonEnv() {
     installed = false;
   }
 
-  if (!installed && fs.existsSync(runtime.pip)) {
+  if (!installed && runtime.pip && fs.existsSync(runtime.pip)) {
     log("Setup", "Initializing voice components…");
     try {
       if (fs.existsSync(REQUIREMENTS)) {
@@ -230,7 +293,7 @@ async function startPiperServer() {
   }
 
   const runtime = getPythonRuntime(PIPER_DIR);
-  if (!fs.existsSync(runtime.python)) {
+  if (!runtime.hasRuntime || !fs.existsSync(runtime.python)) {
     log("Engine", "Local engine runtime executable deferred; standby active.", "warn");
     return false;
   }
@@ -242,11 +305,37 @@ async function startPiperServer() {
     if (onnx) defaultModel = onnx;
   }
 
+  const modelPath = path.join(PIPER_DIR, defaultModel);
+
+  // Setup writable user voices directory for dynamic voice downloads
+  let userVoicesDir = "";
+  try {
+    userVoicesDir = path.join(app.getPath("userData"), "voices");
+    if (!fs.existsSync(userVoicesDir)) {
+      fs.mkdirSync(userVoicesDir, { recursive: true });
+    }
+  } catch {}
+
+  const spawnArgs = [
+    "-m",
+    "piper.http_server",
+    "-m",
+    modelPath,
+    "--data-dir",
+    PIPER_DIR,
+  ];
+
+  if (userVoicesDir && fs.existsSync(userVoicesDir)) {
+    spawnArgs.push("--data-dir", userVoicesDir);
+  }
+
+  spawnArgs.push("--port", String(PIPER_PORT));
+
   log("Engine", "Starting speech synthesis engine…");
 
   let proc = spawn(
     runtime.python,
-    ["-m", "piper.http_server", "-m", defaultModel, "--data-dir", ".", "--port", String(PIPER_PORT)],
+    spawnArgs,
     {
       cwd: PIPER_DIR,
       stdio: ["ignore", "ignore", "pipe"],

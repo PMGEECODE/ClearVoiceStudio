@@ -36,6 +36,9 @@ try {
 } catch {}
 
 const extraArgs = process.argv.slice(2).join(" ");
+if (extraArgs.includes("--win") || extraArgs.includes("-w")) {
+  run("node scripts/prepare-win-python.mjs", "Verifying standalone Windows Python runtime");
+}
 run("node scripts/patch-transformers.mjs", "Applying bundler compatibility patches");
 run("npx next build", "Building Next.js");
 run(`npx electron-builder --config electron-builder.yml ${extraArgs}`.trim(), "Packaging Electron app");
