@@ -1,51 +1,20 @@
 import { NextResponse } from "next/server";
-import { PIPER_SERVER_URL, ensurePiperServer } from "@/lib/piper";
+import { DEFAULT_VOICE_ID, getVoicesDir } from "@/lib/voiceStorage";
+import { voiceEngine } from "@/lib/voice-engine";
 
 export async function GET() {
   const startTime = Date.now();
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 2000);
+  const voices = await voiceEngine.listAllVoices().catch(() => []);
+  const installedCount = voices.filter((v) => v.isInstalled).length;
 
-    let res = await fetch(`${PIPER_SERVER_URL}/info`, {
-      signal: controller.signal,
-      cache: "no-store",
-    }).catch(() => null);
-    clearTimeout(timeout);
-
-    // Auto-heal: If Piper HTTP server isn't running, trigger background launch
-    if (!res || !res.ok) {
-      const started = await ensurePiperServer();
-      if (started) {
-        res = await fetch(`${PIPER_SERVER_URL}/info`, { cache: "no-store" }).catch(() => null);
-      }
-    }
-
-    if (res && res.ok) {
-      const data = await res.json();
-      const latency = Date.now() - startTime;
-      return NextResponse.json({
-        status: "online",
-        latencyMs: latency,
-        voice: data.voice,
-        last: data.last,
-      });
-    }
-
-    return NextResponse.json(
-      {
-        status: "offline",
-        error: "Voice engine initializing",
-      },
-      { status: 503 }
-    );
-  } catch {
-    return NextResponse.json(
-      {
-        status: "offline",
-        error: "Voice engine service unavailable",
-      },
-      { status: 503 }
-    );
-  }
+  return NextResponse.json({
+    status: "online",
+    latencyMs: Date.now() - startTime,
+    engine: "kokoro",
+    defaultVoice: DEFAULT_VOICE_ID,
+    voicesDir: getVoicesDir(),
+    voicesInstalled: installedCount,
+    totalVoicesAvailable: voices.length,
+    model: "Kokoro-82M-v1.0-ONNX (q8)",
+  });
 }

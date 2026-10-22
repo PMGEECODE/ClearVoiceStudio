@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import {
   FileText,
   Upload,
+  FileAudio,
   Zap,
   Volume2,
   AlertCircle,
@@ -20,10 +21,11 @@ import {
   ChevronUp,
   Trash2,
   RotateCcw,
+  Keyboard,
 } from "lucide-react";
 import { Header } from "@/components/Header";
 import { AudioPlayer } from "@/components/AudioPlayer";
-import { VoiceSettings, VoiceConfigState } from "@/components/VoiceSettings";
+import { VoiceSettings } from "@/components/VoiceSettings";
 import { HistoryDrawer, GenerationHistoryItem } from "@/components/HistoryDrawer";
 import { VoiceCatalogModal } from "@/components/VoiceCatalogModal";
 import { CastVoiceManager } from "@/components/CastVoiceManager";
@@ -31,6 +33,10 @@ import { SynthesisProgressBar } from "@/components/SynthesisProgressBar";
 import { LiveMicrophoneVisualizer } from "@/components/LiveMicrophoneVisualizer";
 import { EditorFooter, EditorPresets } from "@/components/EditorToolbar";
 import { AppStatusBar } from "@/components/AppStatusBar";
+import { BootstrapOverlay } from "@/components/BootstrapOverlay";
+import { CustomSelect } from "@/components/CustomSelect";
+import { AudioTranscribe } from "@/components/AudioTranscribe";
+import { ScriptEditor } from "@/components/ScriptEditor";
 import { VoiceModelInfo } from "./api/voices/route";
 import {
   createDictationController,
@@ -43,6 +49,7 @@ import {
   SynthesisProgressState,
   analyzeScriptText,
 } from "@/lib/scriptAnalysis";
+import { usePreferences } from "@/hooks/usePreferences";
 
 export default function Home() {
   // Engine & Server State
@@ -51,11 +58,25 @@ export default function Home() {
   const [voices, setVoices] = useState<VoiceModelInfo[]>([]);
 
   // Editor State
-  const [activeTab, setActiveTab] = useState<"editor" | "upload">("editor");
+  const [activeTab, setActiveTab] = useState<"editor" | "upload" | "transcribe">("editor");
   const [text, setText] = useState<string>(
     "Welcome to ClearVoice Studio. Select any voice above and type or speak to synthesize natural speech."
   );
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
+
+  const handleInsertTranscript = useCallback(
+    (transcribedText: string, mode: "append" | "replace" | "cursor") => {
+      if (mode === "replace") {
+        setText(transcribedText);
+      } else {
+        setText((prev) =>
+          prev.trim() ? `${prev.trim()}\n\n${transcribedText}` : transcribedText
+        );
+      }
+      setActiveTab("editor");
+    },
+    []
+  );
 
   // Hands-Free Voice Dictation (Speech-to-Text) State
   const [isListening, setIsListening] = useState<boolean>(false);
@@ -103,18 +124,8 @@ export default function Home() {
   const [copied, setCopied] = useState<boolean>(false);
   const [synthesisProgress, setSynthesisProgress] = useState<SynthesisProgressState>(null);
 
-  // Voice Configuration
-  const [voiceConfig, setVoiceConfig] = useState<VoiceConfigState>({
-    voice: "en_US-lessac-medium",
-    speakerId: 0,
-    lengthScale: 1.0,
-    noiseScale: 0.667,
-    noiseWScale: 0.8,
-    sentenceSilence: 0.2,
-    prosodyEnabled: true,
-    prosodyProfile: "conversational",
-    prosodyDebug: false,
-  });
+  // Voice Configuration & Preferences — persisted server-side across browser clears
+  const { voiceConfig, setVoiceConfig, volume, setVolume } = usePreferences();
   const [castVoiceMap, setCastVoiceMap] = useState<Record<string, string>>({});
   const scriptAnalysis = useMemo(() => analyzeScriptText(text), [text]);
 
@@ -151,20 +162,60 @@ export default function Home() {
     (speaker: ScriptSpeaker, index: number, usedVoiceIds: Set<string>) => {
       if (voices.length === 0) return voiceConfig.voice;
 
+      const label = (speaker.label || speaker.key || "").toLowerCase();
+      const isNorthern = label.includes("northern") || speaker.dialect === "northern";
+      const isUK = !isNorthern && (label.includes("uk") || label.includes("gb") || label.includes("british") || label.includes("london") || speaker.dialect === "gb");
+      const isUS = label.includes("us") || label.includes("american") || speaker.dialect === "us";
+
+      let pool = voices;
+      if (isNorthern) {
+        const northernVoices = voices.filter((v) => v.id.toLowerCase().includes("northern"));
+        if (northernVoices.length > 0) pool = northernVoices;
+      } else if (isUK) {
+        const ukVoices = voices.filter(
+          (v) =>
+            v.languageCode?.includes("GB") ||
+            v.country?.toLowerCase().includes("kingdom") ||
+            v.country?.toLowerCase().includes("britain") ||
+            v.id.toLowerCase().includes("gb") ||
+            v.id.startsWith("b")
+        );
+        if (ukVoices.length > 0) pool = ukVoices;
+      } else if (isUS) {
+        const usVoices = voices.filter(
+          (v) =>
+            v.languageCode?.includes("US") ||
+            v.country?.toLowerCase().includes("united states") ||
+            v.id.toLowerCase().includes("us") ||
+            v.id.startsWith("a")
+        );
+        if (usVoices.length > 0) pool = usVoices;
+      }
+
       const gender = speaker.gender;
-      const maleHints = ["alan", "male", "ryan", "joe", "danny", "kusal", "arctic"];
-      const femaleHints = ["amy", "lessac", "cori", "female", "kathleen", "libritts", "ljspeech"];
+      const maleHints = [
+        "male", "adam", "george", "lewis", "daniel", "michael", "eric", "liam", "fenrir", "onyx", "puck", "fable", "santa", "echo"
+      ];
+      const femaleHints = [
+        "female", "heart", "bella", "sarah", "nicole", "emma", "isabella", "alice", "lily", "aoede", "jessica", "kore", "river", "alloy", "nova", "sky"
+      ];
       const hints = gender === "male" ? maleHints : gender === "female" ? femaleHints : [];
-      const genderMatches = voices.filter((voice) => {
+
+      const genderMatches = pool.filter((voice) => {
+        if (gender && voice.gender) return voice.gender === gender;
         const id = voice.id.toLowerCase();
         return hints.some((hint) => id.includes(hint));
       });
+
       const unusedGenderMatch = genderMatches.find((voice) => !usedVoiceIds.has(voice.id));
       if (unusedGenderMatch) return unusedGenderMatch.id;
       if (genderMatches[0]) return genderMatches[0].id;
 
-      const unusedVoice = voices.find((voice) => !usedVoiceIds.has(voice.id));
-      return unusedVoice?.id || voices[index % voices.length]?.id || voiceConfig.voice;
+      const unusedVoice = pool.find((voice) => !usedVoiceIds.has(voice.id));
+      if (unusedVoice) return unusedVoice.id;
+
+      const generalUnused = voices.find((voice) => !usedVoiceIds.has(voice.id));
+      return generalUnused?.id || pool[index % pool.length]?.id || voiceConfig.voice;
     },
     [voiceConfig.voice, voices]
   );
@@ -196,8 +247,11 @@ export default function Home() {
     });
   }, [scriptAnalysis, suggestVoiceForSpeaker, voices]);
 
-  // 1. Initial Health Check & Voices fetch
-  const checkStatusAndVoices = useCallback(async () => {
+  // 1. Initial Health Check & Voices fetch (idle-aware to minimize background CPU)
+  const checkStatusAndVoices = useCallback(async (fetchVoices = false) => {
+    // Avoid background wakeups when minimized or hidden
+    if (typeof document !== "undefined" && document.hidden) return;
+
     try {
       const statusRes = await fetch("/api/status");
       if (statusRes.ok) {
@@ -208,25 +262,42 @@ export default function Home() {
         setEngineStatus("offline");
       }
 
-      const voicesRes = await fetch("/api/voices");
-      if (voicesRes.ok) {
-        const data = await voicesRes.json();
-        if (data.voices && data.voices.length > 0) {
-          setVoices(data.voices);
-          if (!data.voices.some((v: VoiceModelInfo) => v.id === voiceConfig.voice)) {
-            setVoiceConfig((prev) => ({ ...prev, voice: data.voices[0].id }));
+      if (fetchVoices) {
+        const voicesRes = await fetch("/api/voices");
+        if (voicesRes.ok) {
+          const data = await voicesRes.json();
+          if (data.voices && data.voices.length > 0) {
+            setVoices(data.voices);
+            if (!data.voices.some((v: VoiceModelInfo) => v.id === voiceConfig.voice)) {
+              setVoiceConfig((prev) => ({ ...prev, voice: data.voices[0].id }));
+            }
           }
         }
       }
     } catch {
       setEngineStatus("offline");
     }
-  }, [voiceConfig.voice]);
+  }, [voiceConfig.voice, setVoiceConfig]);
 
   useEffect(() => {
-    checkStatusAndVoices();
-    const interval = setInterval(checkStatusAndVoices, 15000);
-    return () => clearInterval(interval);
+    // Load both status & voices on mount
+    checkStatusAndVoices(true);
+
+    // Refresh immediately when window regains focus
+    const handleFocus = () => {
+      checkStatusAndVoices(false);
+    };
+    window.addEventListener("focus", handleFocus);
+
+    // Relaxed 60-second idle heartbeat (only when tab is visible)
+    const interval = setInterval(() => {
+      checkStatusAndVoices(false);
+    }, 60000);
+
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      clearInterval(interval);
+    };
   }, [checkStatusAndVoices]);
 
   // Check Dictation Support (Web Speech API or on-device Whisper fallback)
@@ -357,6 +428,8 @@ export default function Home() {
             prosody_enabled: voiceConfig.prosodyEnabled,
             prosody_profile: voiceConfig.prosodyProfile,
             prosody_debug: voiceConfig.prosodyDebug,
+            emotion_mode: voiceConfig.emotionEnabled,
+            emotion_intensity: voiceConfig.emotionIntensity,
           }),
           signal: abortControllerRef.current.signal,
         });
@@ -631,6 +704,7 @@ export default function Home() {
 
   return (
     <div className="app-viewport-root">
+      <BootstrapOverlay />
       <Header
         status={engineStatus}
         latencyMs={latencyMs}
@@ -669,6 +743,14 @@ export default function Home() {
                   <Upload size={14} />
                   <span>Upload Script</span>
                 </button>
+                <button
+                  type="button"
+                  className={`tab-btn ${activeTab === "transcribe" ? "active" : ""}`}
+                  onClick={() => setActiveTab("transcribe")}
+                >
+                  <FileAudio size={14} />
+                  <span>Transcribe Audio</span>
+                </button>
               </div>
             </div>
 
@@ -680,10 +762,10 @@ export default function Home() {
                   alignItems: "center",
                   justifyContent: "space-between",
                   flexWrap: "wrap",
-                  gap: "0.75rem",
-                  padding: "0.75rem 1rem",
-                  marginBottom: "1rem",
-                  borderRadius: "var(--radius-md)",
+                  gap: "0.5rem",
+                  padding: "0.45rem 0.75rem",
+                  marginBottom: "0.65rem",
+                  borderRadius: "var(--radius-sm)",
                   background: "rgba(10, 14, 23, 0.6)",
                   border: "1px solid var(--border-subtle)",
                 }}
@@ -818,7 +900,7 @@ export default function Home() {
                   }}
                 >
                   <DownloadCloud size={14} />
-                  <span>+ Browse & Download 170+ Voices</span>
+                  <span>+ Browse Voice Catalog</span>
                 </button>
               </div>
 
@@ -828,13 +910,13 @@ export default function Home() {
                     display: "flex",
                     alignItems: "center",
                     gap: "0.5rem",
-                    padding: "0.75rem 1rem",
-                    marginBottom: "1rem",
-                    borderRadius: "var(--radius-md)",
+                    padding: "0.5rem 0.75rem",
+                    marginBottom: "0.65rem",
+                    borderRadius: "var(--radius-sm)",
                     background: "rgba(244, 63, 94, 0.12)",
                     border: "1px solid rgba(244, 63, 94, 0.3)",
                     color: "var(--accent-rose)",
-                    fontSize: "0.85rem",
+                    fontSize: "0.82rem",
                   }}
                 >
                   <AlertCircle size={16} />
@@ -843,13 +925,12 @@ export default function Home() {
               )}
 
               {activeTab === "editor" ? (
-                <>
+                <div key="tab-editor" className="tab-pane tab-pane-editor">
                   {/* Textarea with hands-free listening & mute banner */}
                   <div className="editor-textarea-wrapper">
-                    <textarea
-                      className="editor-textarea"
+                    <ScriptEditor
                       value={text}
-                      onChange={(e) => setText(e.target.value)}
+                      onChange={setText}
                       placeholder="Enter, dictate hands-free, or paste speech script here..."
                       rows={8}
                     />
@@ -977,12 +1058,35 @@ export default function Home() {
                                     ? "var(--accent-amber)"
                                     : "var(--text-muted)",
                                 fontWeight: 500,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "0.35rem",
                               }}
                             >
-                              {typeListenerState === "typing" && "⌨️ Pausing to speak..."}
-                              {typeListenerState === "synthesizing" && "⏳ Synthesizing..."}
-                              {typeListenerState === "speaking" && "🔊 Playing speech"}
-                              {typeListenerState === "idle" && "Listening to typing"}
+                              {typeListenerState === "typing" && (
+                                <>
+                                  <Keyboard size={12} />
+                                  <span>Pausing to speak...</span>
+                                </>
+                              )}
+                              {typeListenerState === "synthesizing" && (
+                                <>
+                                  <Loader2 size={12} className="spin" />
+                                  <span>Synthesizing...</span>
+                                </>
+                              )}
+                              {typeListenerState === "speaking" && (
+                                <>
+                                  <Volume2 size={12} />
+                                  <span>Playing speech</span>
+                                </>
+                              )}
+                              {typeListenerState === "idle" && (
+                                <>
+                                  <Radio size={12} />
+                                  <span>Listening to typing</span>
+                                </>
+                              )}
                             </span>
                           )}
                         </h4>
@@ -994,23 +1098,19 @@ export default function Home() {
 
                     <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
                       {typeToSpeakEnabled && (
-                        <select
-                          className="select-input"
-                          style={{
-                            padding: "0.3rem 0.6rem",
-                            fontSize: "0.75rem",
-                            width: "auto",
-                          }}
-                          value={typeDebounceDelay}
-                          onChange={(e) =>
-                            setTypeDebounceDelay(parseInt(e.target.value, 10))
-                          }
-                          title="Typing pause delay before voice triggers"
-                        >
-                          <option value={700}>Fast (0.7s)</option>
-                          <option value={1000}>Normal (1.0s)</option>
-                          <option value={1500}>Relaxed (1.5s)</option>
-                        </select>
+                        <div style={{ width: 130 }}>
+                          <CustomSelect<number>
+                            compact
+                            value={typeDebounceDelay}
+                            onChange={(val) => setTypeDebounceDelay(val)}
+                            options={[
+                              { value: 700, label: "Fast (0.7s)" },
+                              { value: 1000, label: "Normal (1.0s)" },
+                              { value: 1500, label: "Relaxed (1.5s)" },
+                            ]}
+                            title="Typing pause delay before voice triggers"
+                          />
+                        </div>
                       )}
 
                       <label className="toggle-switch">
@@ -1151,39 +1251,46 @@ export default function Home() {
                       <span>Delete</span>
                     </button>
                   </div>
-                </>
-              ) : (
+                </div>
+              ) : activeTab === "upload" ? (
                 /* Upload Tab */
-                <div
-                  className={`dropzone ${dragOver ? "drag-active" : ""}`}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setDragOver(true);
-                  }}
-                  onDragLeave={() => setDragOver(false)}
-                  onDrop={handleDrop}
-                  onClick={() => document.getElementById("file-upload-input")?.click()}
-                >
-                  <input
-                    id="file-upload-input"
-                    type="file"
-                    accept=".txt,.md,.vtt,.srt,.csv,.json"
-                    style={{ display: "none" }}
-                    onChange={(e) => {
-                      if (e.target.files && e.target.files.length > 0) {
-                        handleFileUpload(e.target.files[0]);
-                      }
+                <div key="tab-upload" className="tab-pane tab-pane-upload">
+                  <div
+                    className={`dropzone ${dragOver ? "drag-active" : ""}`}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setDragOver(true);
                     }}
-                  />
-                  <div className="dropzone-icon">
-                    <Upload size={24} />
+                    onDragLeave={() => setDragOver(false)}
+                    onDrop={handleDrop}
+                    onClick={() => document.getElementById("file-upload-input")?.click()}
+                  >
+                    <input
+                      id="file-upload-input"
+                      type="file"
+                      accept=".txt,.md,.vtt,.srt,.csv,.json"
+                      style={{ display: "none" }}
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files.length > 0) {
+                          handleFileUpload(e.target.files[0]);
+                        }
+                      }}
+                    />
+                    <div className="dropzone-icon">
+                      <Upload size={24} />
+                    </div>
+                    <h3 className="dropzone-title">
+                      Drop your script file here or click to browse
+                    </h3>
+                    <p className="dropzone-subtitle">
+                      Supports .txt, .md, .csv, and subtitle transcript files
+                    </p>
                   </div>
-                  <h3 className="dropzone-title">
-                    Drop your script file here or click to browse
-                  </h3>
-                  <p className="dropzone-subtitle">
-                    Supports .txt, .md, .csv, and subtitle transcript files
-                  </p>
+                </div>
+              ) : (
+                /* Transcribe Audio with Whisper Tab */
+                <div key="tab-transcribe" className="tab-pane tab-pane-transcribe" style={{ padding: "0.5rem 0" }}>
+                  <AudioTranscribe onInsert={handleInsertTranscript} />
                 </div>
               )}
             </div>
@@ -1198,6 +1305,8 @@ export default function Home() {
             textSnippet={text}
             voiceName={voiceConfig.voice}
             autoPlay={autoPlayAudio}
+            volume={volume}
+            onVolumeChange={setVolume}
           />
 
           {/* Voice & Tuning Parameters */}

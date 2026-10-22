@@ -51,8 +51,15 @@ piper-tts/*.onnx.json
 __pycache__/
 *.py[cod]
 .pytest_cache/
+build-resources/piper-win/
+build-resources/win-python/
+build-resources/*.zip
+build-resources/*.py
+public/models/
+public/wasm/
 
-# Electron build output
+
+# Desktop build outputs
 /dist-electron/
 /dist/
 

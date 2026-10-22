@@ -1,0 +1,18 @@
+ClearVoice Studio - End User License & Software Terms
+
+Copyright (c) 2024-2026 LiveCodeTech. All rights reserved.
+
+1. GRANT OF LICENSE
+LiveCodeTech grants you a non-exclusive, royalty-free license to install and use ClearVoice Studio for personal, educational, creative, and commercial voice synthesis and audio production.
+
+2. LOCAL COMPUTATION & COMPLETE PRIVACY
+ClearVoice Studio executes all voice synthesis and acoustic modeling locally on your machine. No user text, generated audio, scripts, or sensitive telemetry are ever transmitted to external cloud servers. Your workflow remains 100% private and offline.
+
+3. OPEN NEURAL VOICE COMPONENTS
+ClearVoice Studio integrates open neural speech synthesis engines and voice checkpoints. Associated open-source dependencies (Piper TTS, ONNX Runtime, eSpeak-NG) remain governed by their respective permissive licenses (MIT, Apache 2.0, GPL/LGPL).
+
+4. DISCLAIMER OF WARRANTY
+The software is provided "AS IS", without warranty of any kind, express or implied, including but not limited to warranties of merchantability, fitness for a particular purpose, and non-infringement.
+
+5. ACCEPTANCE
+By clicking "I Agree" or proceeding with installation, you agree to the terms and conditions set forth in this agreement.

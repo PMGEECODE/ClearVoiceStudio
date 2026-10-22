@@ -1,195 +1,42 @@
-# ClearVoice Studio
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-<div align="center">
+## Emotion-aware Kokoro delivery
 
-![ClearVoice Studio Banner](build-resources/icon.png)
+ClearVoice Studio can analyze English sentences locally and make conservative per-sentence pacing and pause adjustments for neutral, happy, excited, sad, angry, fearful, surprised, and tender delivery. Enable it from **Voice & Tuning → Emotion-aware delivery** and use the intensity control to keep the effect subtle (the default is `0.70`). The selected Kokoro voice is never substituted or blended.
 
-### Production-Grade Desktop & Web Studio for Offline Neural Text-to-Speech
+Turn the setting off to use the exact pre-emotion Kokoro path. This is useful for factual narration, strict timing, or comparing output. The feature adds no dependency or remote service: its sentence splitter and classifier are built into the app, and all synthesis remains on-device with `kokoro-js` (Apache-2.0).
 
-[![Next.js](https://img.shields.io/badge/Next.js-15-black?style=flat-square&logo=next.js)](https://nextjs.org/)
-[![Electron](https://img.shields.io/badge/Electron-33-47848F?style=flat-square&logo=electron)](https://www.electronjs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-3178C6?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
-[![Python](https://img.shields.io/badge/Python-3.9+-3776AB?style=flat-square&logo=python)](https://www.python.org/)
-[![License](https://img.shields.io/badge/license-MIT-green.style=flat-square)](LICENSE)
-
-[Features](#features) • [Architecture](#architecture) • [Getting Started](#getting-started) • [Packaging](#desktop-packaging) • [Script Formatting](#multi-speaker-scripts)
-
-</div>
-
----
-
-## Overview
-
-**ClearVoice Studio** is a private, cross-platform studio application for neural speech synthesis. Engineered as a hybrid Next.js and Electron workstation, it operates with zero reliance on cloud APIs, external token meters, or subscription models. 
-
-Every synthesis job is processed locally on device hardware using optimized multi-threaded neural runtimes, ensuring complete data privacy, instantaneous feedback, and broadcast-ready audio output.
-
----
-
-## Features
-
-### 🎙️ 100% Offline & Private Synthesis
-- All neural inference runs entirely on your local CPU.
-- Zero network telemetry, zero data egress, and no recurring API costs.
-- Fully isolated runtime environment with auto-managed virtualenv and model registry.
-
-### 👥 Intelligent Multi-Speaker Cast Engine
-- Automatically parses multi-character dialogues and scripts.
-- Detects speaker turns, labels, and inferred gender attributes.
-- Individual voice model assignment per speaker with unified single-click dialogue rendering.
-- Circular speaker badges with visual identity indexing.
-
-### 🎛️ Acoustic Waveform & Real-Time Visualization
-- Interactive canvas-based frequency spectrum visualizer and reactive audio playback.
-- Dynamic waveform background responsive to voice generation and playback state.
-- Live microphone stream monitor for real-time acoustic input calibration.
-
-### ⚡ Deep Prosody & Acoustic Tuning
-- Precision controls for speech rate (length scale), expressiveness (noise scale), phoneme variability (noise-w), and sentence pause cadence.
-- Segment-aware prosody normalization preserving emotional inflection across dialogue turns.
-
-### 📦 Embedded Voice Catalog & Previewer
-- Built-in repository of open neural voice models across multiple languages, accents, and qualities.
-- In-line audio auditioning and background voice model acquisition.
-
-### 🖥️ Native Frameless Desktop Integration
-- Frameless native window with custom OS-aware title bar controls (macOS, Windows, Linux).
-- Automatic desktop status bar displaying neural engine status and active model metrics.
-- Background process lifecycle management with automatic resource cleanup on exit.
-
----
-
-## Architecture
-
-```
-ClearVoiceStudio/
-├── src/
-│   ├── app/                 # Next.js App Router (UI & API routes)
-│   │   ├── api/
-│   │   │   ├── catalog/     # Voice model repository registry
-│   │   │   ├── download-voice/ # Voice package installation endpoint
-│   │   │   ├── prosody/     # Phoneme & prosody preview endpoint
-│   │   │   ├── status/      # Engine health & latency ping
-│   │   │   ├── synthesize/  # Core multi-speaker synthesis pipeline
-│   │   │   └── voices/      # Active model discovery
-│   │   ├── globals.css      # Custom design tokens & studio stylesheet
-│   │   └── page.tsx         # Main studio workstation interface
-│   ├── components/          # Reusable studio components
-│   │   ├── AppStatusBar.tsx # Electron desktop status footer
-│   │   ├── AudioPlayer.tsx  # Waveform playback controller
-│   │   ├── CastVoiceManager.tsx # Multi-speaker assignment panel
-│   │   ├── CastVoiceSelect.tsx  # Voice dropdown with inline audition
-│   │   └── DesktopTitleBar.tsx  # Native frameless window controls
-│   └── lib/                 # Core engine drivers & analyzers
-│       ├── dictation.ts     # Client-side audio transcription helpers
-│       ├── piper.ts         # Python neural runtime process supervisor
-│       ├── prosody.ts       # Acoustic parameter calculations
-│       └── scriptAnalysis.ts# Dialogue parsing and speaker extraction
-├── electron/
-│   ├── main.mjs             # Frameless desktop window supervisor
-│   └── preload.mjs          # Context isolation IPC security bridge
-├── build-resources/         # High-resolution desktop icons & metadata
-├── scripts/                 # Automated development & packaging scripts
-├── piper-tts/               # Engine specifications & dependencies
-└── electron-builder.yml     # Cross-platform desktop release configuration
-```
-
----
+The installed `kokoro-js` API accepts voice IDs and speed only; it does not provide a supported public style-tensor input. For that reason the app intentionally does not emulate voice blending in a way that could change accent, gender, or voice quality unexpectedly.
 
 ## Getting Started
 
-### Prerequisites
-
-- **Node.js**: `v18.17.0` or later
-- **Python**: `3.9` or later (must have `python3` and `venv` available)
-- **Git**
-
-### Installation
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/PMGEECODE/ClearVoiceStudio.git
-   cd ClearVoiceStudio
-   ```
-
-2. **Install JavaScript dependencies:**
-   ```bash
-   npm install
-   ```
-
-3. **Initialize the local voice engine:**
-   The application will automatically initialize the local Python runtime environment and download the default neural voice model upon initial launch.
-
----
-
-## Running the Application
-
-### Web Studio (Browser Mode)
-
-Launch the Next.js development server:
+First, run the development server:
 
 ```bash
 npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-### Desktop Application (Electron Development)
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
-Launch the native desktop window with hot reload enabled:
+## Learn More
 
-```bash
-npm run electron:dev
-```
+To learn more about Next.js, take a look at the following resources:
 
----
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
 
-## Desktop Packaging
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-ClearVoice Studio uses `electron-builder` to package native cross-platform binaries.
+## Deploy on Vercel
 
-### Build for Linux (AppImage & deb)
-```bash
-npm run electron:build:linux
-```
-Output packages will be placed in the `dist-electron/` directory:
-- `ClearVoice Studio-0.1.0.AppImage` (Self-contained, portable executable)
-- `clearvoice-studio_0.1.0_amd64.deb` (Debian / Ubuntu installer package)
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
-### Build for Windows (.exe)
-```bash
-npm run electron:build:win
-```
-
----
-
-## Multi-Speaker Scripts
-
-ClearVoice Studio detects formatted dialogue scripts automatically and switches into multi-speaker mode:
-
-```text
-Narrator: The morning sun rose gently over the ridge.
-Elena: Are we ready to begin the ascent?
-Marcus: Equipment is checked and secured. Let's move.
-Narrator: And so their expedition commenced into the unknown.
-```
-
-When multi-speaker dialogue is detected:
-1. The **Multi-speaker cast panel** appears automatically.
-2. Unique speakers are cataloged with turn counts and inferred traits.
-3. You can assign distinct voice profiles to each character with instant inline audio previews.
-4. Synthesizing renders the dialogue seamlessly into a single timeline.
-
----
-
-## Privacy & Security
-
-- **Zero Cloud Leakage**: ClearVoice Studio performs 100% of its audio synthesis on localhost.
-- **Port Masking**: Local subprocess ports and communication bridges are strictly encapsulated from terminal logs and client payloads.
-- **Context Isolation**: Desktop Electron integration enforces full sandbox and context isolation boundaries between renderer and main processes.
-
----
-
-## License
-
-Distributed under the MIT License. See `LICENSE` for more information.
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

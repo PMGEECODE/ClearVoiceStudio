@@ -1,0 +1,19 @@
+HTTP/1.1 200 OK
+X-Frame-Options: SAMEORIGIN
+X-Content-Type-Options: nosniff
+Referrer-Policy: strict-origin-when-cross-origin
+Permissions-Policy: camera=(), microphone=(self), geolocation=()
+vary: rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch
+cache-control: no-cache, no-store, must-revalidate
+content-disposition: inline; filename="speech.wav"
+content-length: 237612
+content-type: audio/wav
+x-engine-mode: kokoro_onnx
+x-prosody-mode: normalized
+x-prosody-normalized-length: 71
+x-prosody-profile: conversational
+x-prosody-segments: 1
+Date: Wed, 16 Sep 2026 15:45:23 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+

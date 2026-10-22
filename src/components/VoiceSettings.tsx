@@ -1,9 +1,20 @@
 "use client";
 
-import React from "react";
-import { Sliders, RotateCcw, Gauge, Sparkles, DownloadCloud, Waves } from "lucide-react";
+import React, { useMemo, useState } from "react";
+import {
+  Sliders,
+  RotateCcw,
+  Gauge,
+  Sparkles,
+  DownloadCloud,
+  Waves,
+  ChevronDown,
+  ChevronUp,
+  SlidersHorizontal,
+} from "lucide-react";
 import { VoiceModelInfo } from "../app/api/voices/route";
 import { PROSODY_PROFILES, ProsodyProfileId } from "@/lib/prosody";
+import { CustomSelect, SelectOption } from "./CustomSelect";
 
 export interface VoiceConfigState {
   voice: string;
@@ -15,6 +26,8 @@ export interface VoiceConfigState {
   prosodyEnabled: boolean;
   prosodyProfile: ProsodyProfileId;
   prosodyDebug: boolean;
+  emotionEnabled: boolean;
+  emotionIntensity: number;
 }
 
 interface VoiceSettingsProps {
@@ -32,7 +45,34 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
   onOpenCatalog,
   disabled = false,
 }) => {
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+
   const currentVoice = voices.find((v) => v.id === config.voice) || voices[0];
+
+  const voiceOptions = useMemo<SelectOption<string>[]>(() => {
+    return voices.map((v) => ({
+      value: v.id,
+      label: v.id,
+      sublabel: `${v.quality} • ${v.sampleRate}Hz`,
+      badge: v.quality,
+    }));
+  }, [voices]);
+
+  const speakerOptions = useMemo<SelectOption<number>[]>(() => {
+    if (!currentVoice || currentVoice.numSpeakers <= 1) return [];
+    return Array.from({ length: currentVoice.numSpeakers }, (_, i) => ({
+      value: i,
+      label: `Speaker #${i}`,
+    }));
+  }, [currentVoice]);
+
+  const prosodyOptions = useMemo<SelectOption<ProsodyProfileId>[]>(() => {
+    return Object.values(PROSODY_PROFILES).map((profile) => ({
+      value: profile.id,
+      label: profile.label,
+      badge: profile.emphasis,
+    }));
+  }, []);
 
   const handleReset = () => {
     onChange({
@@ -45,6 +85,8 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
       prosodyEnabled: true,
       prosodyProfile: "conversational",
       prosodyDebug: false,
+      emotionEnabled: true,
+      emotionIntensity: 0.7,
     });
   };
 
@@ -57,6 +99,8 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
       sentenceSilence: 0.28,
       prosodyEnabled: true,
       prosodyProfile: "conversational",
+      emotionEnabled: true,
+      emotionIntensity: 0.7,
     });
   };
 
@@ -66,8 +110,8 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
         <div className="card-title-group">
           <Sliders size={18} style={{ color: "var(--accent-primary)" }} />
           <div>
-            <h3 className="card-title">Voice & Tuning</h3>
-            <p className="card-desc">Neural voice model & acoustic settings</p>
+            <h3 className="card-title">Voice &amp; Tuning</h3>
+            <p className="card-desc">Neural voice model &amp; acoustic settings</p>
           </div>
         </div>
 
@@ -103,25 +147,21 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
           </div>
 
           <div style={{ display: "flex", gap: "0.5rem" }}>
-            <select
-              className="select-input"
-              value={config.voice}
-              disabled={disabled}
-              onChange={(e) =>
-                onChange({
-                  ...config,
-                  voice: e.target.value,
-                  speakerId: 0,
-                })
-              }
-              style={{ flex: 1 }}
-            >
-              {voices.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.id} ({v.quality} • {v.sampleRate}Hz)
-                </option>
-              ))}
-            </select>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <CustomSelect<string>
+                value={config.voice}
+                options={voiceOptions}
+                disabled={disabled}
+                onChange={(newVoice) =>
+                  onChange({
+                    ...config,
+                    voice: newVoice,
+                    speakerId: 0,
+                  })
+                }
+                title="Select active neural TTS voice model"
+              />
+            </div>
 
             <button
               type="button"
@@ -136,8 +176,9 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
                 fontSize: "0.8rem",
                 padding: "0.4rem 0.75rem",
                 whiteSpace: "nowrap",
+                borderRadius: "var(--radius-sm)",
               }}
-              title="Browse and download 170+ voices with streaming preview"
+              title="Browse and download neural voices from the catalog"
             >
               <DownloadCloud size={15} />
               <span>Catalog</span>
@@ -150,29 +191,24 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
           <div className="settings-group">
             <div className="setting-header">
               <span className="setting-title">Speaker ID</span>
-              <span className="setting-value">{config.speakerId}</span>
+              <span className="setting-value">Speaker #{config.speakerId}</span>
             </div>
-            <select
-              className="select-input"
+            <CustomSelect<number>
               value={config.speakerId}
+              options={speakerOptions}
               disabled={disabled}
-              onChange={(e) =>
+              onChange={(newSpeakerId) =>
                 onChange({
                   ...config,
-                  speakerId: parseInt(e.target.value, 10),
+                  speakerId: newSpeakerId,
                 })
               }
-            >
-              {Array.from({ length: currentVoice.numSpeakers }, (_, i) => (
-                <option key={i} value={i}>
-                  Speaker #{i}
-                </option>
-              ))}
-            </select>
+              title="Select speaker voice persona"
+            />
           </div>
         )}
 
-        {/* Speed / Phoneme Length Scale */}
+        {/* Prosody Profile */}
         <div className="settings-group">
           <div className="setting-header">
             <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
@@ -189,45 +225,55 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
               <span className="slider-toggle" />
             </label>
           </div>
-          <select
-            className="select-input"
+          <CustomSelect<ProsodyProfileId>
             value={config.prosodyProfile}
+            options={prosodyOptions}
             disabled={disabled || !config.prosodyEnabled}
-            onChange={(e) =>
-              onChange({ ...config, prosodyProfile: e.target.value as ProsodyProfileId })
+            onChange={(newProfile) =>
+              onChange({ ...config, prosodyProfile: newProfile })
             }
-          >
-            {Object.values(PROSODY_PROFILES).map((profile) => (
-              <option key={profile.id} value={profile.id}>
-                {profile.label}
-              </option>
-            ))}
-          </select>
+            title="Select expressive speech prosody contour"
+          />
         </div>
 
-        {process.env.NODE_ENV !== "production" && (
-          <div className="settings-group">
-            <div className="setting-header">
-              <span className="setting-title">Prosody Debug Headers</span>
-              <label className="toggle-switch" title="Attach development-only prosody metadata headers">
-                <input
-                  type="checkbox"
-                  checked={config.prosodyDebug}
-                  disabled={disabled || !config.prosodyEnabled}
-                  onChange={(e) => onChange({ ...config, prosodyDebug: e.target.checked })}
-                />
-                <span className="slider-toggle" />
-              </label>
+        <div className="settings-group">
+          <div className="setting-header">
+            <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+              <Sparkles size={14} style={{ color: "var(--accent-primary)" }} />
+              <span className="setting-title">Emotion-aware delivery</span>
             </div>
+            <label className="toggle-switch" title="Adapt pacing and pauses to each sentence while keeping the selected voice">
+              <input
+                type="checkbox"
+                checked={config.emotionEnabled}
+                disabled={disabled}
+                onChange={(e) => onChange({ ...config, emotionEnabled: e.target.checked })}
+              />
+              <span className="slider-toggle" />
+            </label>
           </div>
-        )}
+          <input
+            type="range"
+            min="0"
+            max="1.5"
+            step="0.05"
+            disabled={disabled || !config.emotionEnabled}
+            className="range-slider"
+            value={config.emotionIntensity}
+            onChange={(e) => onChange({ ...config, emotionIntensity: parseFloat(e.target.value) })}
+            aria-label="Emotion delivery intensity"
+          />
+          <p style={{ fontSize: "0.7rem", color: "var(--text-dim)", marginTop: "0.2rem" }}>
+            {config.emotionIntensity.toFixed(2)}× — set to 0 for the fastest standard Kokoro path; your selected voice never changes.
+          </p>
+        </div>
 
-        {/* Speed / Phoneme Length Scale */}
+        {/* Speech Rate / Length Scale */}
         <div className="settings-group">
           <div className="setting-header">
             <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
               <Gauge size={14} style={{ color: "var(--text-muted)" }} />
-              <span className="setting-title">Speech Rate (Length Scale)</span>
+              <span className="setting-title">Speech Rate</span>
             </div>
             <span className="setting-value">{config.lengthScale.toFixed(2)}x</span>
           </div>
@@ -258,49 +304,7 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
           </div>
         </div>
 
-        {/* Expressiveness / Noise Scale */}
-        <div className="settings-group">
-          <div className="setting-header">
-            <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-              <Sparkles size={14} style={{ color: "var(--text-muted)" }} />
-              <span className="setting-title">Noise Scale (Inflection)</span>
-            </div>
-            <span className="setting-value">{config.noiseScale.toFixed(3)}</span>
-          </div>
-          <input
-            type="range"
-            min="0.2"
-            max="1.2"
-            step="0.02"
-            disabled={disabled}
-            className="range-slider"
-            value={config.noiseScale}
-            onChange={(e) =>
-              onChange({ ...config, noiseScale: parseFloat(e.target.value) })
-            }
-          />
-        </div>
-
-        {/* Phoneme Width Noise */}
-        <div className="settings-group">
-          <div className="setting-header">
-            <span className="setting-title">Phoneme Width (Noise W)</span>
-            <span className="setting-value">{config.noiseWScale.toFixed(2)}</span>
-          </div>
-          <input
-            type="range"
-            min="0.2"
-            max="1.2"
-            step="0.05"
-            disabled={disabled}
-            className="range-slider"
-            value={config.noiseWScale}
-            onChange={(e) =>
-              onChange({ ...config, noiseWScale: parseFloat(e.target.value) })
-            }
-          />
-        </div>
-
+        {/* Pause Between Sentences */}
         <div className="settings-group">
           <div className="setting-header">
             <span className="setting-title">Pause Between Sentences</span>
@@ -318,6 +322,119 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
               onChange({ ...config, sentenceSilence: parseFloat(e.target.value) })
             }
           />
+        </div>
+
+        {/* Advanced Acoustic Controls — progressively disclosed */}
+        <div className="settings-group" style={{ padding: 0, border: "none" }}>
+          <button
+            type="button"
+            onClick={() => setAdvancedOpen((prev) => !prev)}
+            disabled={disabled}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.4rem",
+              width: "100%",
+              background: "transparent",
+              border: "1px solid var(--border-subtle)",
+              borderRadius: "var(--radius-sm)",
+              padding: "0.4rem 0.65rem",
+              fontSize: "0.78rem",
+              color: "var(--text-muted)",
+              cursor: disabled ? "not-allowed" : "pointer",
+              transition: "var(--transition)",
+            }}
+            title="Toggle advanced acoustic noise parameters"
+          >
+            <SlidersHorizontal size={13} style={{ color: "var(--accent-primary)" }} />
+            <span style={{ flex: 1, textAlign: "left", fontWeight: 500 }}>Advanced Acoustic</span>
+            {advancedOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+          </button>
+
+          {advancedOpen && (
+            <div
+              style={{
+                marginTop: "0.75rem",
+                display: "flex",
+                flexDirection: "column",
+                gap: "0.85rem",
+                padding: "0.75rem",
+                background: "rgba(10, 14, 23, 0.5)",
+                borderRadius: "var(--radius-sm)",
+                border: "1px solid var(--border-subtle)",
+              }}
+            >
+              {/* Noise Scale */}
+              <div>
+                <div className="setting-header" style={{ marginBottom: "0.4rem" }}>
+                  <span className="setting-title" style={{ fontSize: "0.78rem" }}>
+                    Noise Scale
+                  </span>
+                  <span className="setting-value">{config.noiseScale.toFixed(3)}</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.1"
+                  max="1.0"
+                  step="0.01"
+                  disabled={disabled}
+                  className="range-slider"
+                  value={config.noiseScale}
+                  onChange={(e) =>
+                    onChange({ ...config, noiseScale: parseFloat(e.target.value) })
+                  }
+                />
+                <p style={{ fontSize: "0.7rem", color: "var(--text-dim)", marginTop: "0.2rem" }}>
+                  Controls phoneme-level variability. Lower = more stable, higher = more expressive.
+                </p>
+              </div>
+
+              {/* Noise W Scale */}
+              <div>
+                <div className="setting-header" style={{ marginBottom: "0.4rem" }}>
+                  <span className="setting-title" style={{ fontSize: "0.78rem" }}>
+                    Noise W Scale
+                  </span>
+                  <span className="setting-value">{config.noiseWScale.toFixed(3)}</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.1"
+                  max="1.0"
+                  step="0.01"
+                  disabled={disabled}
+                  className="range-slider"
+                  value={config.noiseWScale}
+                  onChange={(e) =>
+                    onChange({ ...config, noiseWScale: parseFloat(e.target.value) })
+                  }
+                />
+                <p style={{ fontSize: "0.7rem", color: "var(--text-dim)", marginTop: "0.2rem" }}>
+                  Controls duration-level variability. Higher = more natural rhythm variation.
+                </p>
+              </div>
+
+              {/* Prosody Debug — dev only */}
+              {process.env.NODE_ENV !== "production" && (
+                <div>
+                  <div className="setting-header">
+                    <span className="setting-title" style={{ fontSize: "0.78rem" }}>
+                      Prosody Debug Headers
+                    </span>
+                    <label className="toggle-switch" title="Attach development-only prosody metadata headers">
+                      <input
+                        type="checkbox"
+                        checked={config.prosodyDebug}
+                        disabled={disabled || !config.prosodyEnabled}
+                        onChange={(e) => onChange({ ...config, prosodyDebug: e.target.checked })}
+                      />
+                      <span className="slider-toggle" />
+                    </label>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

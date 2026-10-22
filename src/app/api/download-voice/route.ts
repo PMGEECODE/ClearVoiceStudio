@@ -1,87 +1,123 @@
-import { NextRequest, NextResponse } from "next/server";
-import { spawn } from "child_process";
+import { NextRequest } from "next/server";
 import path from "path";
 import fs from "fs";
-import { getPiperDir, getPiperPython, isPythonAvailable } from "@/lib/piper";
+import { secureDownloadFile } from "../../../../shared/secureDownload.mjs";
+import { getVoicesDir, isVoiceDownloaded } from "@/lib/voiceStorage";
+import { KOKORO_VOICES_CATALOG, voiceEngine } from "@/lib/voice-engine";
+
+type DownloadProgress = {
+  type: "status" | "progress" | "success" | "error";
+  message?: string;
+  file?: string;
+  downloaded?: number;
+  total?: number | null;
+  remaining?: number | null;
+  percent?: number | null;
+  voice?: string;
+  isInstalled?: boolean;
+};
 
 export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
-    const { voice } = body;
+  const encoder = new TextEncoder();
+  const stream = new TransformStream();
+  const writer = stream.writable.getWriter();
 
-    if (!voice || typeof voice !== "string") {
-      return NextResponse.json({ error: "Voice ID is required." }, { status: 400 });
-    }
+  const emit = async (event: DownloadProgress) => {
+    try {
+      await writer.write(encoder.encode(`${JSON.stringify(event)}\n`));
+    } catch {}
+  };
 
-    const cleanVoice = voice.trim();
-    if (!cleanVoice || !/^[a-zA-Z0-9_-]+$/.test(cleanVoice)) {
-      return NextResponse.json({ error: "Invalid voice ID format." }, { status: 400 });
-    }
+  void (async () => {
+    try {
+      const body = await req.json();
+      const { voice } = body;
 
-    const piperDir = getPiperDir();
-    fs.mkdirSync(piperDir, { recursive: true });
-    const piperPython = getPiperPython();
+      if (!voice || typeof voice !== "string") {
+        await emit({ type: "error", message: "Voice ID is required." });
+        await writer.close();
+        return;
+      }
 
-    if (!isPythonAvailable(piperPython)) {
-      return NextResponse.json(
-        { error: `Python runtime is not available on server (${piperPython}).` },
-        { status: 500 }
-      );
-    }
+      const cleanVoice = voice.trim();
+      const voiceDef = KOKORO_VOICES_CATALOG.find((v) => v.id === cleanVoice);
+      if (!voiceDef) {
+        await emit({ type: "error", message: `Unknown Kokoro voice ID: ${cleanVoice}` });
+        await writer.close();
+        return;
+      }
 
-    // Check if already downloaded
-    const onnxPath = path.join(piperDir, `${cleanVoice}.onnx`);
-    const jsonPath = path.join(piperDir, `${cleanVoice}.onnx.json`);
+      const voicesDir = getVoicesDir();
+      fs.mkdirSync(voicesDir, { recursive: true });
 
-    if (fs.existsSync(onnxPath) && fs.existsSync(jsonPath)) {
-      return NextResponse.json({
-        success: true,
+      const destPath = path.join(voicesDir, `${cleanVoice}.bin`);
+      const partPath = path.join(voicesDir, `${cleanVoice}.bin.part`);
+
+      if (isVoiceDownloaded(cleanVoice)) {
+        await emit({
+          type: "success",
+          voice: cleanVoice,
+          message: `Voice "${voiceDef.name}" is already installed.`,
+          isInstalled: true,
+        });
+        await writer.close();
+        return;
+      }
+
+      await emit({
+        type: "status",
         voice: cleanVoice,
-        message: "Voice is already installed.",
+        message: `Downloading neural voice profile for "${voiceDef.name}" (510 KB)...`,
+      });
+
+      const voiceUrl = `https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices/${cleanVoice}.bin`;
+
+      await secureDownloadFile({
+        url: voiceUrl,
+        destPath,
+        partPath,
+        label: `${voiceDef.name} Voice`,
+        onProgress: (ev) => {
+          void emit({
+            type: "progress",
+            file: `${voiceDef.name} Voice (${ev.total ? Math.round(ev.total / 1024) : 510} KB)`,
+            downloaded: ev.downloaded,
+            total: ev.total ?? 522240,
+            remaining: ev.total != null && ev.downloaded != null ? Math.max(ev.total - ev.downloaded, 0) : null,
+            percent: ev.percent != null ? Math.round(ev.percent) : null,
+            message: `Downloading ${voiceDef.name}...`,
+          });
+        },
+      });
+
+      // Clear engine cache so new voice is recognized immediately
+      voiceEngine.invalidateCache();
+
+      await emit({
+        type: "success",
+        voice: cleanVoice,
+        message: `Voice "${voiceDef.name}" installed and ready for synthesis.`,
         isInstalled: true,
       });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Download failed";
+      await emit({
+        type: "error",
+        message: `Voice download error: ${msg}`,
+      });
+    } finally {
+      try {
+        await writer.close();
+      } catch {}
     }
+  })();
 
-    // Execute python download_voices
-    await new Promise<void>((resolve, reject) => {
-      const child = spawn(
-        piperPython,
-        [
-          "-m",
-          "piper.download_voices",
-          "--download-dir",
-          piperDir,
-          cleanVoice,
-        ],
-        { stdio: ["ignore", "pipe", "pipe"] }
-      );
-
-      let stderr = "";
-      child.stderr.on("data", (data) => {
-        stderr += data.toString();
-      });
-
-      child.on("close", (code) => {
-        if (code === 0) {
-          resolve();
-        } else {
-          reject(new Error(`Download failed (code ${code}): ${stderr}`));
-        }
-      });
-
-      child.on("error", (err) => {
-        reject(err);
-      });
-    });
-
-    return NextResponse.json({
-      success: true,
-      voice: cleanVoice,
-      message: `Voice ${cleanVoice} downloaded successfully.`,
-      isInstalled: true,
-    });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Download failed";
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
+  return new Response(stream.readable, {
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    },
+  });
 }

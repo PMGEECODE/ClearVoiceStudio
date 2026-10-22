@@ -40,7 +40,7 @@ export interface ProsodyResult {
   normalizedText: string;
   profile: ProsodyProfile;
   segments: ProsodySegment[];
-  piperParams: {
+  synthesisParams: {
     lengthScale: number;
     noiseScale: number;
     noiseWScale: number;
@@ -219,7 +219,7 @@ export function processTextForProsody(
     normalizedText,
     profile,
     segments,
-    piperParams: {
+    synthesisParams: {
       lengthScale: clampNumber(
         (options.lengthScale ?? 1) * profile.lengthScaleMultiplier,
         1,

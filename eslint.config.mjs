@@ -13,7 +13,7 @@ const eslintConfig = defineConfig([
     "electron/**",
     ".pytest_cache/**",
     "next-env.d.ts",
-    "piper-tts/**",
+    "public/**",
     "scripts/**",
   ]),
   {

@@ -1,0 +1,9 @@
+{
+  "manifestVersion": 2,
+  "connectivityProbeUrl": "https://github.com/",
+  "defaultVoiceId": "af_heart",
+  "voice": {
+    "voiceId": "af_heart",
+    "label": "Default voice model (Heart)"
+  }
+}

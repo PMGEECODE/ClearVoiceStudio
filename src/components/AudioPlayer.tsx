@@ -21,6 +21,8 @@ interface AudioPlayerProps {
   textSnippet?: string;
   voiceName?: string;
   autoPlay?: boolean;
+  volume?: number;
+  onVolumeChange?: (volume: number) => void;
 }
 
 export const AudioPlayer: React.FC<AudioPlayerProps> = ({
@@ -28,6 +30,8 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   textSnippet = "Synthesized speech",
   voiceName = "AI Voice",
   autoPlay = true,
+  volume: propVolume,
+  onVolumeChange,
 }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const scrubberRef = useRef<HTMLDivElement | null>(null);
@@ -36,11 +40,21 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [duration, setDuration] = useState<number>(0);
-  const [volume, setVolume] = useState<number>(1);
+  const [volume, setVolume] = useState<number>(propVolume ?? 0.8);
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [downloadedFormat, setDownloadedFormat] = useState<string | null>(null);
   const [isConverting, setIsConverting] = useState<boolean>(false);
   const [conversionError, setConversionError] = useState<string | null>(null);
+
+  // Sync with propVolume from preferences when loaded
+  useEffect(() => {
+    if (typeof propVolume === "number" && !Number.isNaN(propVolume)) {
+      setVolume(propVolume);
+      if (audioRef.current) {
+        audioRef.current.volume = isMuted ? 0 : propVolume;
+      }
+    }
+  }, [propVolume, isMuted]);
 
   // When a new audio URL arrives, load and optionally autoplay
   useEffect(() => {
@@ -50,6 +64,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
       audioRef.current.src = audioUrl;
+      audioRef.current.volume = isMuted ? 0 : volume;
       audioRef.current.load();
 
       if (autoPlay) {
@@ -61,7 +76,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
           });
       }
     }
-  }, [audioUrl, autoPlay]);
+  }, [audioUrl, autoPlay, isMuted, volume]);
 
   const togglePlay = () => {
     if (!audioRef.current || !audioUrl) return;
@@ -111,11 +126,18 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     const nextMute = !isMuted;
     setIsMuted(nextMute);
     audioRef.current.muted = nextMute;
+    if (!nextMute && volume === 0) {
+      const restored = 0.8;
+      setVolume(restored);
+      audioRef.current.volume = restored;
+      onVolumeChange?.(restored);
+    }
   };
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = parseFloat(e.target.value);
     setVolume(val);
+    onVolumeChange?.(val);
     if (audioRef.current) {
       audioRef.current.volume = val;
       if (val === 0) {
@@ -230,10 +252,11 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
         <audio
           ref={(el) => {
             audioRef.current = el;
-            if (audioEl !== el) {
+            if (el && audioEl !== el) {
               setAudioEl(el);
             }
           }}
+          crossOrigin="anonymous"
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
           onTimeUpdate={handleTimeUpdate}
@@ -314,6 +337,8 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                 step="0.05"
                 value={isMuted ? 0 : volume}
                 onChange={handleVolumeChange}
+                title={`Volume: ${Math.round((isMuted ? 0 : volume) * 100)}%`}
+                aria-label="Volume"
                 style={{ width: "65px", accentColor: "var(--accent-primary)" }}
               />
             </div>

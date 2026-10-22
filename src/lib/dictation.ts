@@ -43,26 +43,87 @@ export interface DictationController {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Shared Whisper pipeline singleton (cached across controller instances)
+// ──────────────────────────────────────────────────────────────────────────────
+// Whisper worker singleton — loaded once, reused across all controller calls.
+// Uses a Web Worker (dictation-worker.js in /public) that loads
+// @xenova/transformers via importScripts to bypass Turbopack WASM bundling.
 // ──────────────────────────────────────────────────────────────────────────────
 
-let whisperPipelinePromise: Promise<unknown> | null = null;
+let _whisperWorker: Worker | null = null;
 
-async function getWhisperPipeline(onProgress?: (msg: string) => void) {
-  if (!whisperPipelinePromise) {
-    whisperPipelinePromise = (async () => {
-      onProgress?.("Loading local speech model (first time only — ~39 MB)…");
-      const { pipeline, env } = await import("@xenova/transformers");
-      env.useBrowserCache = true;
-      env.allowLocalModels = false;
-      return pipeline("automatic-speech-recognition", "Xenova/whisper-tiny.en");
-    })().catch((err) => {
-      whisperPipelinePromise = null;
-      console.error("[Whisper] Failed to initialize pipeline:", err);
-      throw err;
-    });
+function getWhisperWorker(): Worker {
+  if (!_whisperWorker) {
+    _whisperWorker = new Worker('/dictation-worker.js', { type: 'module' });
   }
-  return whisperPipelinePromise;
+  return _whisperWorker;
+}
+
+/** Pre-warm the Whisper pipeline so the first transcription is faster. */
+function warmupWhisperWorker(onProgress?: (msg: string) => void): void {
+  const worker = getWhisperWorker();
+  const onMessage = (e: MessageEvent) => {
+    const { type, payload } = e.data as { type: string; payload: { status?: string } };
+    if (type === 'PROGRESS' && payload?.status === 'progress' && onProgress) {
+      onProgress('Loading offline speech recognition model…');
+    }
+    if (type === 'READY' || type === 'ERROR') {
+      worker.removeEventListener('message', onMessage);
+    }
+  };
+  worker.addEventListener('message', onMessage);
+  worker.postMessage({ type: 'WARMUP' });
+}
+
+/** Run Whisper inference on a 16 kHz mono Float32Array via the worker. */
+function transcribeWithWorker(
+  audio16k: Float32Array,
+  onProgress?: (msg: string) => void
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const worker = getWhisperWorker();
+
+    const onMessage = (e: MessageEvent) => {
+      const { type, payload } = e.data as { type: string; payload: { text?: string; message?: string; status?: string } };
+
+      if (type === 'PROGRESS') {
+        if (payload?.status === 'progress' && onProgress) {
+          onProgress('Loading offline speech recognition model…');
+        }
+      } else if (type === 'RESULT') {
+        cleanup();
+        resolve(payload?.text ?? '');
+      } else if (type === 'ERROR') {
+        cleanup();
+        reject(new Error(payload?.message ?? 'Whisper worker error'));
+      }
+    };
+
+    const onError = (e: ErrorEvent) => {
+      cleanup();
+      try {
+        worker.terminate();
+      } catch {
+        // ignore
+      }
+      _whisperWorker = null;
+      reject(new Error(`Whisper worker error: ${e.message}`));
+    };
+
+    const cleanup = () => {
+      worker.removeEventListener('message', onMessage);
+      worker.removeEventListener('error', onError);
+    };
+
+    worker.addEventListener('message', onMessage);
+    worker.addEventListener('error', onError);
+
+    // Transfer the buffer (zero-copy) to avoid duplicating large audio data
+    const transferBuffer = audio16k.buffer.slice(0);
+    worker.postMessage(
+      { type: 'TRANSCRIBE', payload: { audioData: transferBuffer } },
+      [transferBuffer]
+    );
+  });
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -160,12 +221,11 @@ function createWhisperController(callbacks: DictationCallbacks): DictationContro
     (async () => {
       try {
         const audio16k = await resampleTo16k(merged, sampleRate);
-        const transcriber = (await getWhisperPipeline((message) => {
+        const text = await transcribeWithWorker(audio16k, (message) => {
           callbacks.onStatusChange?.("loading-model");
           callbacks.onInterim?.(message);
-        })) as (audio: Float32Array) => Promise<{ text: string }>;
-        const result = await transcriber(audio16k);
-        const transcript = (result?.text ?? "").trim();
+        });
+        const transcript = text.trim();
         if (transcript) callbacks.onFinal?.(transcript);
       } catch (err: unknown) {
         console.error("[Whisper] Transcription error:", err);
@@ -212,7 +272,7 @@ function createWhisperController(callbacks: DictationCallbacks): DictationContro
 
       // Eagerly warm up the Whisper pipeline in the background so the first
       // transcription is faster.
-      getWhisperPipeline().catch(() => { /* non-fatal */ });
+      warmupWhisperWorker();
     } catch (err: unknown) {
       active = false;
       const msg = err instanceof Error ? err.message : "Microphone access denied";

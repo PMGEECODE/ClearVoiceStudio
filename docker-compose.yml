@@ -13,7 +13,7 @@ services:
       - NEXT_TELEMETRY_DISABLED=1
     volumes:
       # Persist dynamically downloaded voices across container restarts
-      - voice_models:/app/piper-tts
+      - voice_models:/app/voices
 
 volumes:
   voice_models:

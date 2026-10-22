@@ -3,7 +3,7 @@ import { PROSODY_PROFILES, processTextForProsody } from "@/lib/prosody";
 
 export async function GET() {
   return NextResponse.json({
-    defaultProfile: process.env.PIPER_PROSODY_PROFILE || "conversational",
+    defaultProfile: process.env.CLEARVOICE_PROSODY_PROFILE || process.env.PIPER_PROSODY_PROFILE || "conversational",
     profiles: Object.values(PROSODY_PROFILES).map((profile) => ({
       id: profile.id,
       label: profile.label,
@@ -33,19 +33,19 @@ export async function POST(req: NextRequest) {
     }
 
     const result = processTextForProsody(text, {
-      profileId: String(body.prosody_profile || process.env.PIPER_PROSODY_PROFILE || "conversational"),
+      profileId: String(body.prosody_profile || process.env.CLEARVOICE_PROSODY_PROFILE || process.env.PIPER_PROSODY_PROFILE || "conversational"),
       lengthScale: Number(body.length_scale) || 1,
       noiseScale: Number(body.noise_scale) || 0.667,
       noiseWScale: Number(body.noise_w_scale) || 0.8,
       sentenceSilence: Number(body.sentence_silence) || 0.2,
-      maxSegmentLength: Number(process.env.PIPER_PROSODY_MAX_SEGMENT_LENGTH) || undefined,
+      maxSegmentLength: Number(process.env.CLEARVOICE_PROSODY_MAX_SEGMENT_LENGTH || process.env.PIPER_PROSODY_MAX_SEGMENT_LENGTH) || undefined,
     });
 
     return NextResponse.json({
       originalText: result.originalText,
       normalizedText: result.normalizedText,
       profile: result.profile,
-      piperParams: result.piperParams,
+      synthesisParams: result.synthesisParams,
       segments: result.segments,
       before: {
         text,

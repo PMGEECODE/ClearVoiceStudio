@@ -1,8 +1,10 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Mic2, Radio } from "lucide-react";
+import Image from "next/image";
+import { Radio } from "lucide-react";
 import { DesktopTitleBar } from "./DesktopTitleBar";
+import cvsLogo from "@/assets/icon/cvs.png";
 
 interface HeaderProps {
   status: "online" | "offline" | "loading";
@@ -36,8 +38,33 @@ export const Header: React.FC<HeaderProps> = ({ status, latencyMs, activeVoice }
       <header className="top-nav">
         <div className="container nav-content">
           <div className="brand-wrapper">
-            <div className="brand-icon-box">
-              <Mic2 size={22} />
+            <div
+              className="brand-icon-box"
+              style={{
+                width: 36,
+                height: 36,
+                minWidth: 36,
+                minHeight: 36,
+                maxWidth: 36,
+                maxHeight: 36,
+                overflow: "hidden",
+              }}
+            >
+              <Image
+                src={cvsLogo}
+                alt="ClearVoice Studio"
+                width={36}
+                height={36}
+                priority
+                className="brand-logo-img"
+                style={{
+                  width: 36,
+                  height: 36,
+                  maxWidth: 36,
+                  maxHeight: 36,
+                  objectFit: "contain",
+                }}
+              />
             </div>
             <div className="brand-text">
               <h1>ClearVoice Studio</h1>

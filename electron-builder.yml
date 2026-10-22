@@ -1,10 +1,11 @@
 # electron-builder.yml
 # ClearVoice Studio — desktop packaging configuration
 
-appId: tech.livecodetech.clearvoice-studio
+appId: tech.pmgeecode.clearvoice-studio
 productName: "ClearVoice Studio"
-copyright: "Copyright © 2024-2026 LiveCodeTech"
+copyright: "Copyright © 2026 PMGEECODE"
 asar: false
+compression: maximum
 
 # Directories
 directories:
@@ -20,23 +21,28 @@ files:
   - package.json
   - next.config.ts
   - tsconfig.json
+  - shared/**/*
+  - voices/**/*
   - "!node_modules/electron/dist/**"
   - "!node_modules/.cache/**"
+  - "!node_modules/**/.cache/**"
+  - "!.next/cache/**"
   - "!**/*.map"
+  # Unused duplicate onnxruntime & next build tools
+  - "!node_modules/@huggingface/transformers/node_modules/onnxruntime-node/**"
+  - "!node_modules/@huggingface/transformers/node_modules/onnxruntime-web/**"
+  - "!node_modules/onnxruntime-web/dist/ort-wasm.wasm"
+  - "!node_modules/onnxruntime-web/dist/ort-wasm-threaded.wasm"
 
-# Extra resources: bundle voice models + metadata
+
 extraResources:
-  - from: piper-tts
-    to: piper-tts
-    filter:
-      - "**/*.onnx"
-      - "**/*.onnx.json"
-      - "**/*.txt"
+  - from: build-resources/bootstrap-manifest.json
+    to: bootstrap-manifest.json
 
 # Auto-update publish provider (GitHub Releases)
 publish:
   provider: github
-  owner: livecodetech
+  owner: PMGEECODE
   repo: ClearVoiceStudio
   releaseType: release
 
@@ -47,19 +53,80 @@ linux:
       arch: [x64]
     - target: deb
       arch: [x64]
+  artifactName: "ClearVoiceStudio-${version}.${ext}"
   category: AudioVideo
   executableName: clearvoice-studio
-  maintainer: "LiveCodeTech <dev@livecodetech.local>"
+  maintainer: "PMGEECODE <dev@pmgeecode.local>"
   syncDesktopName: true
-  icon: build-resources/icon.png
+  icon: build-resources/icons
+  files:
+    - electron/**/*
+    - .next/**/*
+    - public/**/*
+    - node_modules/**/*
+    - package.json
+    - next.config.ts
+    - tsconfig.json
+    - shared/**/*
+    - voices/**/*
+    - "!node_modules/electron/dist/**"
+    - "!node_modules/.cache/**"
+    - "!node_modules/**/.cache/**"
+    - "!.next/cache/**"
+    - "!**/*.map"
+    # Strip Windows-only native binaries
+    - "!node_modules/@next/swc-win32-*/**"
+    - "!node_modules/**/@next/swc-win32-*/**"
+    - "!node_modules/@img/sharp-win32*/**"
+    - "!node_modules/**/@img/sharp-win32*/**"
+    - "!node_modules/@img/sharp-libvips-win*/**"
+    - "!node_modules/**/@img/sharp-libvips-win*/**"
+    # Strip macOS-only native binaries
+    - "!node_modules/@next/swc-darwin-*/**"
+    - "!node_modules/**/@next/swc-darwin-*/**"
+    - "!node_modules/@img/sharp-darwin*/**"
+    - "!node_modules/**/@img/sharp-darwin*/**"
+    - "!node_modules/@img/sharp-libvips-darwin*/**"
+    - "!node_modules/**/@img/sharp-libvips-darwin*/**"
+    # Strip musl variant (we target glibc/gnu Linux only)
+    - "!node_modules/@next/swc-linux-*-musl/**"
+    - "!node_modules/**/@next/swc-linux-*-musl/**"
+    - "!node_modules/@img/sharp-linuxmusl*/**"
+    - "!node_modules/**/@img/sharp-linuxmusl*/**"
+    - "!node_modules/@img/sharp-libvips-linuxmusl*/**"
+    - "!node_modules/**/@img/sharp-libvips-linuxmusl*/**"
+    # Strip onnxruntime binaries for other platforms
+    - "!node_modules/onnxruntime-node/bin/napi-v3/win32/**"
+    - "!node_modules/onnxruntime-node/bin/napi-v3/darwin/**"
+    - "!node_modules/@huggingface/transformers/node_modules/onnxruntime-node/**"
+    - "!node_modules/@huggingface/transformers/node_modules/onnxruntime-web/**"
+    - "!node_modules/onnxruntime-web/dist/ort-wasm.wasm"
+    - "!node_modules/onnxruntime-web/dist/ort-wasm-threaded.wasm"
+
   extraResources:
-    - from: piper-tts
-      to: piper-tts
-      filter:
-        - "**/*.onnx"
-        - "**/*.onnx.json"
-        - "**/*.txt"
-        - ".venv/**/*"
+    - from: build-resources/bootstrap-manifest.json
+      to: bootstrap-manifest.json
+
+# Debian package options (root-level — required by electron-builder schema)
+deb:
+  depends:
+    - libgtk-3-0
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0
+    - libuuid1
+    - libsecret-1-0
+  recommends:
+    - libappindicator3-1
+  # beforeInstall is not a named DebOptions field; pass via fpm array
+  fpm:
+    - "--before-install=build-resources/linux-before-install.sh"
+    - "--replaces=clear-voice-studio"
+  afterInstall: build-resources/linux-after-install.sh
+  afterRemove: build-resources/linux-after-remove.sh
 
 # macOS
 mac:
@@ -76,19 +143,64 @@ win:
   target:
     - target: nsis
       arch: [x64]
+  artifactName: "ClearVoiceStudio-Setup-${version}.${ext}"
   icon: build-resources/icon.ico
+  files:
+    - electron/**/*
+    - .next/**/*
+    - public/**/*
+    - node_modules/**/*
+    - package.json
+    - next.config.ts
+    - tsconfig.json
+    - shared/**/*
+    - voices/**/*
+    - "!node_modules/electron/dist/**"
+    - "!node_modules/.cache/**"
+    - "!node_modules/**/.cache/**"
+    - "!.next/cache/**"
+    - "!**/*.map"
+    - "!node_modules/@next/swc-linux-*/**"
+    - "!node_modules/**/@next/swc-linux-*/**"
+    - "!node_modules/@next/swc-darwin-*/**"
+    - "!node_modules/**/@next/swc-darwin-*/**"
+    - "!node_modules/@img/sharp-linux*/**"
+    - "!node_modules/**/@img/sharp-linux*/**"
+    - "!node_modules/@img/sharp-darwin*/**"
+    - "!node_modules/**/@img/sharp-darwin*/**"
+    - "!node_modules/@img/sharp-libvips-linux*/**"
+    - "!node_modules/**/@img/sharp-libvips-linux*/**"
+    - "!node_modules/@img/sharp-libvips-darwin*/**"
+    - "!node_modules/**/@img/sharp-libvips-darwin*/**"
+    - "!node_modules/onnxruntime-node/bin/napi-v3/darwin/**"
+    - "!node_modules/onnxruntime-node/bin/napi-v3/linux/**"
+    - "!node_modules/@huggingface/transformers/node_modules/onnxruntime-node/**"
+    - "!node_modules/@huggingface/transformers/node_modules/onnxruntime-web/**"
+    - "!node_modules/onnxruntime-web/dist/ort-wasm.wasm"
+    - "!node_modules/onnxruntime-web/dist/ort-wasm-threaded.wasm"
+
   extraResources:
-    - from: piper-tts
-      to: piper-tts
-      filter:
-        - "**/*.onnx"
-        - "**/*.onnx.json"
-        - "**/*.txt"
-    - from: build-resources/win-python
-      to: python-win
+    - from: build-resources/ffmpeg-win/ffmpeg.exe
+      to: ffmpeg/ffmpeg.exe
+    - from: build-resources/bootstrap-manifest.json
+      to: bootstrap-manifest.json
 
 nsis:
   oneClick: false
+  perMachine: false
+  allowElevation: true
   allowToChangeInstallationDirectory: true
-  createDesktopShortcut: true
+  menuCategory: true
+  createDesktopShortcut: always
   createStartMenuShortcut: true
+  runAfterFinish: true
+  differentialPackage: false
+  license: build-resources/license.txt
+  include: build-resources/installer.nsh
+  installerIcon: build-resources/icon.ico
+  uninstallerIcon: build-resources/icon.ico
+  installerHeaderIcon: build-resources/icon.ico
+  deleteAppDataOnUninstall: false
+  displayLanguageSelector: false
+  installerLanguages:
+    - en_US

@@ -1,15 +1,16 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Image from "next/image";
 import {
   Minus,
   Square,
   Copy,
   X,
-  Mic2,
   Radio,
   Sparkles,
 } from "lucide-react";
+import cvsLogo from "@/assets/icon/cvs.png";
 
 interface DesktopTitleBarProps {
   status: "online" | "offline" | "loading";
@@ -26,6 +27,8 @@ interface ElectronAPI {
   close: () => Promise<void>;
   isMaximized: () => Promise<boolean>;
   onMaximizedChange: (cb: (isMax: boolean) => void) => () => void;
+  startDragging?: () => Promise<void>;
+  startResizeDragging?: (direction: string) => Promise<void>;
 }
 
 declare global {
@@ -77,6 +80,12 @@ export const DesktopTitleBar: React.FC<DesktopTitleBarProps> = ({
   const isMac = platform === "darwin";
   const isWin = platform === "win32";
 
+  const handleDragMouseDown = (e: React.MouseEvent) => {
+    if (e.button === 0) {
+      window.electronAPI?.startDragging?.();
+    }
+  };
+
   return (
     <div
       className={`desktop-titlebar platform-${platform} ${
@@ -90,8 +99,33 @@ export const DesktopTitleBar: React.FC<DesktopTitleBarProps> = ({
           <div className="titlebar-mac-spacer" />
         ) : (
           <div className="titlebar-brand no-drag">
-            <div className="titlebar-icon-box">
-              <Mic2 size={16} />
+            <div
+              className="titlebar-icon-box"
+              style={{
+                width: 26,
+                height: 26,
+                minWidth: 26,
+                minHeight: 26,
+                maxWidth: 26,
+                maxHeight: 26,
+                overflow: "hidden",
+              }}
+            >
+              <Image
+                src={cvsLogo}
+                alt="ClearVoice Studio"
+                width={26}
+                height={26}
+                priority
+                className="titlebar-logo-img"
+                style={{
+                  width: 26,
+                  height: 26,
+                  maxWidth: 26,
+                  maxHeight: 26,
+                  objectFit: "contain",
+                }}
+              />
             </div>
             <div className="titlebar-titles">
               <span className="titlebar-app-name">ClearVoice Studio</span>
@@ -102,7 +136,11 @@ export const DesktopTitleBar: React.FC<DesktopTitleBarProps> = ({
       </div>
 
       {/* Center Draggable Zone: Title & Status pill */}
-      <div className="titlebar-center titlebar-drag-region">
+      <div
+        className="titlebar-center titlebar-drag-region"
+        onMouseDown={handleDragMouseDown}
+        onDoubleClick={handleMaximize}
+      >
         {isMac && (
           <div className="titlebar-mac-title no-drag">
             <span className="titlebar-app-name">ClearVoice Studio</span>

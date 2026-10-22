@@ -109,18 +109,10 @@ export const AcousticWaveBackground: React.FC = () => {
             <stop offset="60%"  stopColor="#2dd4bf" stopOpacity="0.85" />
             <stop offset="100%" stopColor="#0284c7" stopOpacity="0.5" />
           </linearGradient>
-
-          <filter id="acoustic-glow" x="-10%" y="-10%" width="120%" height="120%">
-            <feGaussianBlur stdDeviation="3" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
         </defs>
 
         {/* Primary Flowing Ribbon Mesh */}
-        <g className="acoustic-ribbon-group" filter="url(#acoustic-glow)">
+        <g className="acoustic-ribbon-group">
           {primaryRibbonPaths.map((p, idx) => (
             <path
               key={`primary-${idx}`}
