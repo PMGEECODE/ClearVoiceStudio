@@ -301,7 +301,7 @@ export class KokoroProvider implements VoiceProvider {
           durationMs: Date.now() - c0,
         });
       }
-      audioBuffer = concatenateWav(wavBuffers, 0.12);
+      audioBuffer = concatenateWav(wavBuffers, sentenceSilence);
     }
 
     const elapsedMs = Date.now() - t0;

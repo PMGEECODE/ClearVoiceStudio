@@ -127,6 +127,9 @@ export default function Home() {
   // Voice Configuration & Preferences — persisted server-side across browser clears
   const { voiceConfig, setVoiceConfig, volume, setVolume } = usePreferences();
   const [castVoiceMap, setCastVoiceMap] = useState<Record<string, string>>({});
+  // Tracks which speaker keys were explicitly chosen by the user vs auto-assigned.
+  // Only user-set entries are preserved when the script or voices list changes.
+  const userSetCastKeys = useRef<Set<string>>(new Set());
   const scriptAnalysis = useMemo(() => analyzeScriptText(text), [text]);
 
   // Voice Catalog Modal State
@@ -222,20 +225,41 @@ export default function Home() {
 
   useEffect(() => {
     if (scriptAnalysis.mode !== "dialogue") {
+      // Clear auto-assignments when leaving dialogue mode; preserve user choices
+      // in case they switch back.
+      userSetCastKeys.current = new Set(
+        [...userSetCastKeys.current].filter((k) =>
+          scriptAnalysis.speakers.some((s) => s.key === k)
+        )
+      );
       setCastVoiceMap({});
       return;
     }
+
+    // Don't run auto-assignment until the voice catalogue has loaded.
+    if (voices.length === 0) return;
 
     setCastVoiceMap((prev) => {
       const next: Record<string, string> = {};
       const used = new Set<string>();
 
+      // Pass 1: lock in user-set voices first so they occupy their slots
+      // before we suggest voices for auto-assigned speakers.
+      scriptAnalysis.speakers.forEach((speaker) => {
+        if (userSetCastKeys.current.has(speaker.key)) {
+          const pinned = prev[speaker.key];
+          const stillValid = voices.some((v) => v.id === pinned);
+          if (stillValid) {
+            next[speaker.key] = pinned;
+            used.add(pinned);
+          }
+        }
+      });
+
+      // Pass 2: auto-assign the remaining speakers by gender + dialect.
       scriptAnalysis.speakers.forEach((speaker, index) => {
-        const existingVoice = prev[speaker.key];
-        const validExistingVoice = voices.some((voice) => voice.id === existingVoice);
-        const voiceId = validExistingVoice
-          ? existingVoice
-          : suggestVoiceForSpeaker(speaker, index, used);
+        if (next[speaker.key]) return; // already pinned in pass 1
+        const voiceId = suggestVoiceForSpeaker(speaker, index, used);
         next[speaker.key] = voiceId;
         used.add(voiceId);
       });
@@ -1128,9 +1152,11 @@ export default function Home() {
                   <CastVoiceManager
                     analysis={scriptAnalysis}
                     castVoiceMap={castVoiceMap}
-                    onCastVoiceChange={(speakerKey, voiceId) =>
-                      setCastVoiceMap((prev) => ({ ...prev, [speakerKey]: voiceId }))
-                    }
+                    onCastVoiceChange={(speakerKey, voiceId) => {
+                      // Record that this speaker's voice was explicitly chosen by the user.
+                      userSetCastKeys.current = new Set([...userSetCastKeys.current, speakerKey]);
+                      setCastVoiceMap((prev) => ({ ...prev, [speakerKey]: voiceId }));
+                    }}
                     voices={voices}
                     currentVoice={voiceConfig.voice}
                     disabled={isSynthesizing}
